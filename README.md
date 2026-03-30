@@ -78,27 +78,32 @@ iterating on a query.
 
 1. [Requirements](#requirements)
 2. [Installation](#installation)
-3. [Quick Start](#quick-start)
-4. [Architecture](#architecture)
-5. [Connecting to a Database](#connecting-to-a-database)
-6. [The Editor](#the-editor)
-7. [Running Queries](#running-queries)
-8. [Result Tabs](#result-tabs)
-9. [Transaction Mode](#transaction-mode)
-10. [Schema Browser](#schema-browser)
-11. [Query History](#query-history)
-12. [Parameterized Queries](#parameterized-queries)
-13. [EXPLAIN / EXPLAIN ANALYZE](#explain--explain-analyze)
-14. [Exporting Results](#exporting-results)
-15. [Keyboard Shortcuts](#keyboard-shortcuts)
-16. [Themes](#themes)
-17. [Security Notes](#security-notes)
-18. [Known Limitations](#known-limitations)
-19. [Changelog](#changelog)
+3. [Building a Standalone Executable](#building-a-standalone-executable)
+4. [Quick Start](#quick-start)
+5. [Architecture](#architecture)
+6. [Connecting to a Database](#connecting-to-a-database)
+7. [The Editor](#the-editor)
+8. [Running Queries](#running-queries)
+9. [Result Tabs](#result-tabs)
+10. [Transaction Mode](#transaction-mode)
+11. [Schema Browser](#schema-browser)
+12. [Query History](#query-history)
+13. [Parameterized Queries](#parameterized-queries)
+14. [EXPLAIN / EXPLAIN ANALYZE](#explain--explain-analyze)
+15. [Exporting Results](#exporting-results)
+16. [Keyboard Shortcuts](#keyboard-shortcuts)
+17. [Themes](#themes)
+18. [Security Notes](#security-notes)
+19. [Known Limitations](#known-limitations)
+20. [Changelog](#changelog)
 
 ---
 
 ## Requirements
+
+**Pre-built binaries** (see [Installation](#installation)) require no Python. Only a running PostgreSQL server (9.x – 16+) is needed.
+
+**Running from source** requires:
 
 | Dependency | Minimum version | Notes |
 |---|---|---|
@@ -107,11 +112,26 @@ iterating on a query.
 | psycopg2-binary | 2.9 | PostgreSQL adapter |
 | sqlparse | 0.4 | Optional; only needed for Format SQL |
 
-PostgreSQL server: any version supported by psycopg2 (9.x – 16+).
-
 ---
 
 ## Installation
+
+### Option 1 — Download a pre-built binary (recommended)
+
+Pre-built standalone executables are published automatically via GitHub Actions on every version tag. No Python installation required.
+
+1. Go to the **Releases** page of this repository.
+2. Download the file for your platform:
+
+| Platform | File | Notes |
+|---|---|---|
+| Windows | `Coruscant.exe` | Double-click to run |
+| macOS | `Coruscant-macOS.zip` | Unzip, move `Coruscant.app` to Applications |
+| Linux | `Coruscant` | `chmod +x Coruscant` then `./Coruscant` |
+
+Linux binaries require `libGL`, `libglib-2.0`, and `libdbus-1` on the host machine. On Debian/Ubuntu: `sudo apt-get install libgl1 libglib2.0-0 libdbus-1-3`.
+
+### Option 2 — Run from source
 
 ```bash
 # 1. Clone or download the project
@@ -136,9 +156,66 @@ python main.py
 
 ---
 
+## Building a Standalone Executable
+
+Coruscant uses [PyInstaller](https://pyinstaller.org) to produce self-contained executables. The `distribution/` folder contains everything needed.
+
+### Automated builds via GitHub Actions
+
+Pushing a version tag triggers the `.github/workflows/release.yml` workflow, which builds all three platforms in parallel and publishes a GitHub Release with the artifacts attached.
+
+```bash
+git tag v0.9.1
+git push --tags
+```
+
+The workflow can also be triggered manually from the **Actions** tab in GitHub without a tag (useful for testing builds). When triggered without a tag the artifacts are uploaded but no release is created.
+
+### Local builds
+
+Each platform has its own convenience script in `distribution/`. Run from the **project root** or let the script navigate there automatically.
+
+**Windows**
+```bat
+distribution\build_windows.bat
+```
+Output: `distribution\dist\Coruscant.exe`
+
+**macOS**
+```bash
+bash distribution/build_macos.sh
+```
+Output: `distribution/dist/Coruscant-macOS.zip` (contains `Coruscant.app`)
+
+**Linux**
+```bash
+bash distribution/build_linux.sh
+```
+Output: `distribution/dist/Coruscant`
+
+All three scripts install `requirements.txt` and `pyinstaller` automatically before building. The shared PyInstaller spec file is `distribution/coruscant.spec`.
+
+### Build output layout
+
+```
+distribution/
+├── coruscant.spec       # PyInstaller spec (all platforms)
+├── build_windows.bat
+├── build_macos.sh
+├── build_linux.sh
+├── dist/                # created by build scripts (git-ignored)
+│   ├── Coruscant.exe    # Windows output
+│   ├── Coruscant.app/   # macOS output (before zipping)
+│   ├── Coruscant-macOS.zip
+│   └── Coruscant        # Linux output
+└── .build/              # PyInstaller work directory (git-ignored)
+```
+
+---
+
 ## Quick Start
 
-1. `python main.py`
+1. Launch Coruscant — either run the downloaded binary or `python main.py` from source.
 2. Click **Connect** → fill in server details → **OK**.
 3. Type SQL in the editor (e.g. `SELECT * FROM pg_tables;`).
 4. Press **F5** or click **▶ Execute**.

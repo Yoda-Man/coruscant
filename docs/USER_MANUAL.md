@@ -111,23 +111,47 @@ its own; it connects directly to your PostgreSQL instance.
 | Item | Requirement |
 |---|---|
 | Operating System | Windows 10/11, macOS 11+, or Linux |
-| Python | 3.10 or newer |
 | PostgreSQL server | Any version from 9.x to 16+ |
+| Python | 3.10 or newer *(only required when running from source)* |
 | Screen resolution | 1280 × 720 minimum (1920 × 1080 recommended) |
 
 ### 2.2 Installation
 
-Open a terminal and run:
+There are two ways to install Coruscant.
 
-```bash
-pip install pyside6>=6.5 psycopg2-binary>=2.9 sqlparse>=0.4
-```
+---
 
-Or, if you downloaded the project folder:
+**Option A — Download a pre-built binary (recommended)**
+
+No Python installation required. Pre-built executables for all platforms are published on the GitHub Releases page.
+
+1. Open the **Releases** page of the Coruscant repository.
+2. Download the file for your operating system:
+
+| Platform | File | How to run |
+|---|---|---|
+| Windows | `Coruscant.exe` | Double-click the file |
+| macOS | `Coruscant-macOS.zip` | Unzip, then move `Coruscant.app` to your Applications folder and open it |
+| Linux | `Coruscant` | Open a terminal: `chmod +x Coruscant && ./Coruscant` |
+
+> **Linux note:** The binary requires `libGL`, `libglib-2.0`, and `libdbus-1` on the host machine. If the app does not start, install them:
+> ```bash
+> # Debian / Ubuntu
+> sudo apt-get install libgl1 libglib2.0-0 libdbus-1-3
+> # Fedora / RHEL
+> sudo dnf install mesa-libGL glib2 dbus-libs
+> ```
+
+---
+
+**Option B — Run from source**
+
+Use this option if you want to inspect or modify the code.
 
 ```bash
 cd DBClient
 pip install -r requirements.txt
+python main.py
 ```
 
 > **Tip:** Using a virtual environment keeps dependencies isolated:
@@ -140,6 +164,9 @@ pip install -r requirements.txt
 
 ### 2.3 Launching the Application
 
+**Pre-built binary:** open or double-click the downloaded file as described above.
+
+**From source:**
 ```bash
 python main.py
 ```

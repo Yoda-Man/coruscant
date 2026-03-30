@@ -125,7 +125,7 @@ There are two ways to install Coruscant.
 
 No Python installation required. Pre-built executables for all platforms are published on the GitHub Releases page.
 
-1. Open the **Releases** page of the Coruscant repository.
+1. Open the [**Releases** page](https://github.com/Yoda-Man/coruscant/releases) of the Coruscant repository.
 2. Download the file for your operating system:
 
 | Platform | File | How to run |

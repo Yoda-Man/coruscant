@@ -120,7 +120,7 @@ iterating on a query.
 
 Pre-built standalone executables are published automatically via GitHub Actions on every version tag. No Python installation required.
 
-1. Go to the **Releases** page of this repository.
+1. Go to the [**Releases** page](https://github.com/Yoda-Man/coruscant/releases) of this repository.
 2. Download the file for your platform:
 
 | Platform | File | Notes |

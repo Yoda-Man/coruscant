@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coruscant User Manual v0.9.0</title>
+  <style>
+    /* ── Reset & base ────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #1e1e2e;
+      --surface:     #252535;
+      --surface2:    #2e2e45;
+      --border:      #3a3a55;
+      --text:        #cdd6f4;
+      --text-muted:  #7f849c;
+      --accent:      #89b4fa;
+      --accent2:     #cba6f7;
+      --green:       #a6e3a1;
+      --yellow:      #f9e2af;
+      --red:         #f38ba8;
+      --orange:      #fab387;
+      --radius:      6px;
+      --sidebar-w:   260px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--text);
+      background: var(--bg);
+      display: flex;
+    }
+
+    /* ── Sidebar nav ─────────────────────────────────────── */
+    nav#sidebar {
+      position: fixed;
+      top: 0; left: 0;
+      width: var(--sidebar-w);
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 0 2rem;
+      z-index: 100;
+    }
+
+    nav#sidebar .nav-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 0 1.2rem 0.6rem;
+    }
+
+    nav#sidebar a {
+      display: block;
+      padding: 0.25rem 1.2rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s, background 0.15s;
+      border-left: 2px solid transparent;
+    }
+
+    nav#sidebar a:hover {
+      color: var(--text);
+      background: var(--surface2);
+    }
+
+    nav#sidebar a.sub {
+      padding-left: 2rem;
+      font-size: 0.8rem;
+    }
+
+    nav#sidebar .nav-brand {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent);
+      padding: 0 1.2rem 1.2rem;
+      display: block;
+    }
+
+    /* ── Main content ────────────────────────────────────── */
+    main {
+      margin-left: var(--sidebar-w);
+      padding: 2.5rem 3rem 4rem;
+      max-width: 900px;
+      width: 100%;
+    }
+
+    /* ── Typography ──────────────────────────────────────── */
+    h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .tagline {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      font-style: italic;
+      margin-bottom: 2rem;
+      opacity: 0.75;
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--accent2);
+      margin: 2.8rem 0 0.8rem;
+      padding-top: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.4rem;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--green);
+      margin: 1.8rem 0 0.5rem;
+    }
+
+    h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--orange);
+      margin: 1.2rem 0 0.4rem;
+    }
+
+    p { margin-bottom: 0.9rem; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    strong { color: var(--text); font-weight: 600; }
+
+    em { color: var(--text-muted); font-style: italic; }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2.5rem 0;
+    }
+
+    /* ── Code ────────────────────────────────────────────── */
+    code {
+      font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+      font-size: 0.85em;
+      background: var(--surface2);
+      color: var(--orange);
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+
+    pre {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      overflow-x: auto;
+      margin: 0.8rem 0 1.2rem;
+    }
+
+    pre code {
+      background: transparent;
+      color: var(--text);
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+
+    /* ── Tables ──────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.8rem 0 1.4rem;
+      font-size: 0.88rem;
+    }
+
+    thead {
+      background: var(--surface2);
+    }
+
+    th {
+      text-align: left;
+      padding: 0.55rem 0.9rem;
+      font-weight: 600;
+      color: var(--accent);
+      border-bottom: 2px solid var(--border);
+    }
+
+    td {
+      padding: 0.5rem 0.9rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tbody tr:hover { background: var(--surface2); }
+
+    /* ── Lists ───────────────────────────────────────────── */
+    ul, ol {
+      padding-left: 1.5rem;
+      margin-bottom: 0.9rem;
+    }
+
+    li { margin-bottom: 0.3rem; }
+
+    /* ── Callout / blockquote ────────────────────────────── */
+    blockquote {
+      border-left: 3px solid var(--accent);
+      margin: 1rem 0;
+      padding: 0.6rem 1rem;
+      background: var(--surface2);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    blockquote strong { color: var(--accent); }
+
+    blockquote p:last-child { margin-bottom: 0; }
+
+    /* ── Special callouts ────────────────────────────────── */
+    .callout {
+      border-radius: var(--radius);
+      padding: 0.8rem 1.1rem;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+
+    .callout-motivation {
+      background: color-mix(in srgb, var(--accent2) 8%, var(--surface));
+      border-left: 4px solid var(--accent2);
+    }
+
+    .callout-highlight {
+      background: color-mix(in srgb, var(--green) 8%, var(--surface));
+      border-left: 4px solid var(--green);
+    }
+
+    .callout-warning {
+      background: color-mix(in srgb, var(--yellow) 8%, var(--surface));
+      border-left: 4px solid var(--yellow);
+    }
+
+    .callout-danger {
+      background: color-mix(in srgb, var(--red) 8%, var(--surface));
+      border-left: 4px solid var(--red);
+    }
+
+    .callout p:last-child { margin-bottom: 0; }
+
+    /* ── Keyboard badges ─────────────────────────────────── */
+    kbd {
+      display: inline-block;
+      padding: 0.15em 0.45em;
+      font-family: inherit;
+      font-size: 0.8em;
+      font-weight: 600;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+      box-shadow: 0 1px 0 var(--border);
+      white-space: nowrap;
+    }
+
+    /* ── Interface diagram ───────────────────────────────── */
+    .ascii-diagram {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      color: var(--text);
+      margin: 0.8rem 0 1.2rem;
+      white-space: pre;
+    }
+
+    /* ── Footer ──────────────────────────────────────────── */
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+
+    /* ── Section anchors ─────────────────────────────────── */
+    .section-anchor { scroll-margin-top: 1.5rem; }
+
+    /* ── Print ───────────────────────────────────────────── */
+    @media print {
+      nav#sidebar { display: none; }
+      main { margin-left: 0; padding: 1rem; }
+      body { background: #fff; color: #000; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════════════ SIDEBAR ════════════════════════ -->
+<nav id="sidebar">
+  <span class="nav-brand">Coruscant</span>
+  <span class="nav-title">User Manual</span>
+
+  <a href="#intro">1. Introduction</a>
+  <a href="#getting-started">2. Getting Started</a>
+  <a href="#requirements"   class="sub">2.1 System Requirements</a>
+  <a href="#installation"   class="sub">2.2 Installation</a>
+  <a href="#launching"      class="sub">2.3 Launching</a>
+  <a href="#interface">3. Interface at a Glance</a>
+  <a href="#connecting">4. Connecting to PostgreSQL</a>
+  <a href="#conn-dialog"    class="sub">4.1 Connection Dialog</a>
+  <a href="#conn-details"   class="sub">4.2 Connection Details</a>
+  <a href="#ssl"            class="sub">4.3 SSL Mode</a>
+  <a href="#test-conn"      class="sub">4.4 Testing a Connection</a>
+  <a href="#recent-conn"    class="sub">4.5 Recent Connections</a>
+  <a href="#disconnect"     class="sub">4.6 Disconnecting</a>
+  <a href="#writing-sql">5. Writing SQL</a>
+  <a href="#editor"         class="sub">5.1 The SQL Editor</a>
+  <a href="#editor-tabs"    class="sub">5.2 Multiple Editor Tabs</a>
+  <a href="#open-file"      class="sub">5.3 Opening a Script</a>
+  <a href="#save-file"      class="sub">5.4 Saving SQL</a>
+  <a href="#format"         class="sub">5.5 Formatting SQL</a>
+  <a href="#clear"          class="sub">5.6 Clearing the Editor</a>
+  <a href="#running">6. Running Queries</a>
+  <a href="#execute"        class="sub">6.1 Execute Full Script</a>
+  <a href="#selection"      class="sub">6.2 Run Selection Only</a>
+  <a href="#row-limit"      class="sub">6.3 Row Limit</a>
+  <a href="#cancel"         class="sub">6.4 Cancelling</a>
+  <a href="#results">7. Working with Results</a>
+  <a href="#result-types"   class="sub">7.1 Result Tab Types</a>
+  <a href="#filtering"      class="sub">7.2 Filtering Rows</a>
+  <a href="#sorting"        class="sub">7.3 Sorting Columns</a>
+  <a href="#copy-rows"      class="sub">7.4 Copy to Clipboard</a>
+  <a href="#pin-tabs"       class="sub">7.5 Pinning &amp; Renaming</a>
+  <a href="#nulls"          class="sub">7.6 NULL Values</a>
+  <a href="#export"         class="sub">7.7 Exporting Results</a>
+  <a href="#transactions">8. Transaction Mode</a>
+  <a href="#autocommit"     class="sub">8.1 Auto-commit</a>
+  <a href="#manual-tx"      class="sub">8.2 Manual Mode</a>
+  <a href="#commit"         class="sub">8.3 Committing</a>
+  <a href="#rollback"       class="sub">8.4 Rolling Back</a>
+  <a href="#schema">9. Schema Browser</a>
+  <a href="#history">10. Query History</a>
+  <a href="#params">11. Parameterized Queries</a>
+  <a href="#explain">12. EXPLAIN and Query Plans</a>
+  <a href="#themes">13. Themes</a>
+  <a href="#shortcuts">14. Keyboard Shortcuts</a>
+  <a href="#troubleshooting">15. Troubleshooting</a>
+  <a href="#security">16. Security Guidance</a>
+</nav>
+
+<!-- ════════════════════════ MAIN ════════════════════════════ -->
+<main>
+
+  <h1>Coruscant</h1>
+  <p class="subtitle">User Manual &nbsp;·&nbsp; Version 0.9.0 &nbsp;·&nbsp; Author: Marwa Trust Mutemasango</p>
+  <p class="tagline"><em>Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.</em></p>
+
+  <hr />
+
+  <!-- ── 1. Introduction ─────────────────────────────────── -->
+  <h2 id="intro" class="section-anchor">1. Introduction</h2>
+
+  <h3>The Problem</h3>
+
+  <div class="callout callout-motivation">
+    <p>If you have used <strong>pgAdmin</strong>, the most widely used GUI tool for PostgreSQL,
+    you have likely run into this: you write a script with several <code>SELECT</code>
+    statements, press Execute, and only the last result appears. The earlier result
+    sets are gone.</p>
+    <p>This is a known limitation of pgAdmin's current stable release. A fix is actively
+    under development, but it has not yet shipped to users. The challenge is non-trivial: holding every result set in memory
+    simultaneously creates real pressure on machines running large queries.</p>
+    <p>The impact is real. A migration script that validates data before and after the
+    change requires two queries. A diagnostic script may need five. Forcing each into
+    its own separate run breaks the logical flow of the work and makes it harder to
+    compare results side by side.</p>
+  </div>
+
+  <h3>The Solution</h3>
+
+  <div class="callout callout-highlight">
+    <p><strong>Coruscant</strong> was built specifically to address this gap. Every statement
+    in your script runs independently and produces its own result tab. Ten
+    <code>SELECT</code> statements produce ten tabs, each one sortable, filterable, and
+    exportable. You can pin the ones you want to keep, rename them for clarity, and
+    compare them without re-running anything.</p>
+  </div>
+
+  <h3>What Coruscant Does</h3>
+
+  <p>Beyond multi-statement result display, Coruscant provides a complete desktop SQL
+  environment for PostgreSQL:</p>
+
+  <ul>
+    <li><strong>Write and run SQL:</strong> syntax-highlighted editor with multi-tab support.</li>
+    <li><strong>View results:</strong> sortable, filterable tables with live row filtering.</li>
+    <li><strong>Browse your schema:</strong> tables, views, columns, indexes, foreign keys, and functions, with hover-to-view definitions.</li>
+    <li><strong>Manage transactions:</strong> auto-commit or manual mode with explicit Commit and Rollback.</li>
+    <li><strong>Cancel queries cleanly:</strong> sends <code>pg_cancel_backend()</code> to the server; the UI never freezes.</li>
+    <li><strong>Parameterized queries:</strong> named placeholders with safe server-side substitution.</li>
+    <li><strong>Export results:</strong> CSV or JSON with a single click.</li>
+    <li><strong>Load and save SQL files:</strong> open any <code>.sql</code> script and save your work to disk.</li>
+  </ul>
+
+  <p>Everything runs in a single window. The application requires no server of its own;
+  it connects directly to your PostgreSQL instance.</p>
+
+  <hr />
+
+  <!-- ── 2. Getting Started ──────────────────────────────── -->
+  <h2 id="getting-started" class="section-anchor">2. Getting Started</h2>
+
+  <h3 id="requirements">2.1 System Requirements</h3>
+
+  <table>
+    <thead><tr><th>Item</th><th>Requirement</th></tr></thead>
+    <tbody>
+      <tr><td>Operating System</td><td>Windows 10/11, macOS 11+, or Linux</td></tr>
+      <tr><td>Python</td><td>3.10 or newer</td></tr>
+      <tr><td>PostgreSQL server</td><td>Any version from 9.x to 16+</td></tr>
+      <tr><td>Screen resolution</td><td>1280 × 720 minimum (1920 × 1080 recommended)</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="installation">2.2 Installation</h3>
+
+  <p>Open a terminal and run:</p>
+
+<pre><code>pip install pyside6&gt;=6.5 psycopg2-binary&gt;=2.9 sqlparse&gt;=0.4</code></pre>
+
+  <p>Or, if you downloaded the project folder:</p>
+
+<pre><code>cd DBClient
+pip install -r requirements.txt</code></pre>
+
+  <blockquote>
+    <p><strong>Tip:</strong> Using a virtual environment keeps dependencies isolated:</p>
+<pre><code>python -m venv .venv
+.venv\Scripts\activate      # Windows
+source .venv/bin/activate   # macOS / Linux
+pip install -r requirements.txt</code></pre>
+  </blockquote>
+
+  <h3 id="launching">2.3 Launching the Application</h3>
+
+<pre><code>python main.py</code></pre>
+
+  <p>The Coruscant window opens with a dark theme by default. You can switch to a light
+  theme at any time using the <strong>🌙</strong> button in the toolbar.</p>
+
+  <hr />
+
+  <!-- ── 3. Interface ────────────────────────────────────── -->
+  <h2 id="interface" class="section-anchor">3. The Interface at a Glance</h2>
+
+<div class="ascii-diagram">┌─────────────────────────────────────────────────────────────────────────┐
+│  TOOLBAR                                                                │
+│  [Connect] [Disconnect] | [▶ Execute] [⏹ Cancel] [Explain] [Explain+]  │
+│  [Format SQL] [Clear] | [Open SQL…] [Save SQL…] | [+ Tab]              │
+│  [Auto-commit ✓] [Commit] [Rollback] | Row limit: [1000] | [🌙] | [●]  │
+├───────────────┬─────────────────────────────────────────────────────────┤
+│               │                                                         │
+│  Schema       │   SQL EDITOR TABS                                       │
+│  Browser      │   ┌─────────────────────────────────────────────────┐  │
+│               │   │  Query 1  │  Query 2  │  + Tab                  │  │
+│  ─────────    │   │                                                  │  │
+│               │   │  -- Write your SQL here                         │  │
+│  Query        │   │  SELECT * FROM users;                           │  │
+│  History      │   │                                                  │  │
+│               │   └─────────────────────────────────────────────────┘  │
+│               ├─────────────────────────────────────────────────────────┤
+│               │                                                         │
+│               │   RESULT TABS                                           │
+│               │   ┌─────────────────────────────────────────────────┐  │
+│               │   │  Query 1 (12 ms, 5 rows)  │  Query 2 (3 ms)    │  │
+│               │   │  Filter: [          ]  Export CSV  Export JSON  │  │
+│               │   │  ┌──────┬──────────┬────────────────────────┐  │  │
+│               │   │  │  id  │  name    │  email                 │  │  │
+│               │   │  ├──────┼──────────┼────────────────────────┤  │  │
+│               │   │  │   1  │  Alice   │  alice@example.com     │  │  │
+│               │   └─────────────────────────────────────────────────┘  │
+├───────────────┴─────────────────────────────────────────────────────────┤
+│  STATUS BAR:  Connected to mydb on localhost:5432                       │
+└─────────────────────────────────────────────────────────────────────────┘</div>
+
+  <table>
+    <thead><tr><th>Area</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Toolbar</strong></td><td>All primary actions: connect, execute, open/save files, theme</td></tr>
+      <tr><td><strong>Schema Browser</strong> (left dock, top)</td><td>Browse database objects</td></tr>
+      <tr><td><strong>Query History</strong> (left dock, bottom)</td><td>Recent queries</td></tr>
+      <tr><td><strong>Editor Tabs</strong> (centre, top)</td><td>Write and edit SQL</td></tr>
+      <tr><td><strong>Result Tabs</strong> (centre, bottom)</td><td>View query output</td></tr>
+      <tr><td><strong>Status Bar</strong> (bottom)</td><td>Connection info and execution messages</td></tr>
+    </tbody>
+  </table>
+
+  <hr />
+
+  <!-- ── 4. Connecting ───────────────────────────────────── -->
+  <h2 id="connecting" class="section-anchor">4. Connecting to PostgreSQL</h2>
+
+  <h3 id="conn-dialog">4.1 Opening the Connection Dialog</h3>
+  <p>Click <strong>Connect</strong> in the toolbar. The connection dialog opens.</p>
+
+  <h3 id="conn-details">4.2 Filling in Connection Details</h3>
+
+  <table>
+    <thead><tr><th>Field</th><th>What to enter</th><th>Default</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Host</strong></td><td>Hostname or IP address of your PostgreSQL server</td><td><code>localhost</code></td></tr>
+      <tr><td><strong>Port</strong></td><td>Port PostgreSQL is listening on</td><td><code>5432</code></td></tr>
+      <tr><td><strong>Database</strong></td><td>Name of the database to connect to</td><td><em>required</em></td></tr>
+      <tr><td><strong>Username</strong></td><td>Your PostgreSQL role/user name</td><td><em>required</em></td></tr>
+      <tr><td><strong>Password</strong></td><td>Your password</td><td><em>required</em></td></tr>
+      <tr><td><strong>SSL mode</strong></td><td>Encryption level (see <a href="#ssl">Section 4.3</a>)</td><td><code>prefer</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>Click <strong>OK</strong> to connect. The status bar and the connection indicator
+  (● top-right of the toolbar) will turn green when connected.</p>
+
+  <h3 id="ssl">4.3 SSL Mode</h3>
+
+  <table>
+    <thead><tr><th>Mode</th><th>When to use</th></tr></thead>
+    <tbody>
+      <tr><td><code>disable</code></td><td>Local or trusted networks where SSL is not needed</td></tr>
+      <tr><td><code>allow</code></td><td>Let the server decide whether to use SSL</td></tr>
+      <tr><td><code>prefer</code></td><td>Use SSL if the server supports it, safe for most situations <em>(default)</em></td></tr>
+      <tr><td><code>require</code></td><td>Always use SSL, but do not verify the certificate</td></tr>
+      <tr><td><code>verify-ca</code></td><td>Use SSL and verify the server's certificate against a Certificate Authority</td></tr>
+      <tr><td><code>verify-full</code></td><td>Strongest option: verify certificate and that the hostname matches</td></tr>
+    </tbody>
+  </table>
+
+  <p>For production databases over the internet, use <code>verify-full</code>.</p>
+
+  <h3 id="test-conn">4.4 Testing a Connection</h3>
+  <p>Before clicking <strong>OK</strong>, click <strong>Test Connection</strong>. Coruscant opens a
+  short-lived test connection and reports whether it succeeded. This does not change
+  your current session.</p>
+
+  <h3 id="recent-conn">4.5 Recent Connections</h3>
+  <p>The top of the connection dialog shows a drop-down of up to 5 previously used
+  connections. Select one to auto-fill all fields. Passwords are stored in an encoded
+  form (not plaintext) in your operating system's settings store.</p>
+
+  <h3 id="disconnect">4.6 Disconnecting</h3>
+  <p>Click <strong>Disconnect</strong> in the toolbar. Any open manual transaction will be
+  abandoned by the server automatically.</p>
+
+  <hr />
+
+  <!-- ── 5. Writing SQL ──────────────────────────────────── -->
+  <h2 id="writing-sql" class="section-anchor">5. Writing SQL</h2>
+
+  <h3 id="editor">5.1 The SQL Editor</h3>
+  <p>The main editing area supports:</p>
+  <ul>
+    <li><strong>Syntax highlighting:</strong> keywords (blue), functions (yellow), strings (orange), numbers (green), comments (grey).</li>
+    <li><strong>Multiple statements:</strong> separate them with semicolons (<code>;</code>). Each statement runs independently and produces its own result tab.</li>
+    <li><strong>Tab key:</strong> inserts spaces for indentation.</li>
+  </ul>
+
+  <h3 id="editor-tabs">5.2 Multiple Editor Tabs</h3>
+  <p>You can have as many editor tabs open as you need. Each tab is independent.</p>
+
+  <table>
+    <thead><tr><th>Action</th><th>Method</th></tr></thead>
+    <tbody>
+      <tr><td>Open a new tab</td><td>Click <strong>+ Tab</strong> in the toolbar, or press <kbd>Ctrl+T</kbd></td></tr>
+      <tr><td>Switch to next tab</td><td><kbd>Ctrl+Tab</kbd></td></tr>
+      <tr><td>Switch to previous tab</td><td><kbd>Ctrl+Shift+Tab</kbd></td></tr>
+      <tr><td>Close the current tab</td><td>Click the <strong>×</strong> on the tab, or press <kbd>Ctrl+W</kbd></td></tr>
+      <tr><td>Reorder tabs</td><td>Drag a tab to a new position</td></tr>
+    </tbody>
+  </table>
+
+  <blockquote><p>If you close the last remaining tab, the editor is cleared rather than the tab
+  being removed; there is always at least one editor tab open.</p></blockquote>
+
+  <h3 id="open-file">5.3 Opening a SQL Script from File</h3>
+  <p>To load an existing <code>.sql</code> file from your computer:</p>
+  <ol>
+    <li>Click <strong>Open SQL…</strong> in the toolbar.</li>
+    <li>A file browser opens. Navigate to your file.</li>
+    <li>Select a <code>.sql</code> or <code>.txt</code> file and click <strong>Open</strong>.</li>
+    <li>The file contents are loaded into the <strong>current editor tab</strong>, replacing any existing content.</li>
+  </ol>
+  <blockquote><p><strong>Tip:</strong> To load a script into a new tab without losing your current work,
+  first press <kbd>Ctrl+T</kbd> to open a new tab, then click <strong>Open SQL…</strong>.</p></blockquote>
+
+  <h3 id="save-file">5.4 Saving Your SQL to a File</h3>
+  <ol>
+    <li>Click <strong>Save SQL…</strong> in the toolbar.</li>
+    <li>Choose a folder and enter a filename.</li>
+    <li>Click <strong>Save</strong>.</li>
+  </ol>
+  <p>The full editor content (not just a selection) is always saved.</p>
+
+  <h3 id="format">5.5 Formatting SQL</h3>
+  <p>Click <strong>Format SQL</strong> to auto-format the SQL in the current editor:</p>
+  <ul>
+    <li>SQL keywords are uppercased (<code>select</code> → <code>SELECT</code>).</li>
+    <li>Identifiers are lowercased.</li>
+    <li>Indentation is normalised.</li>
+  </ul>
+  <p>If you have text <strong>selected</strong>, only the selected portion is formatted. The rest of the editor is untouched.</p>
+  <blockquote><p>Requires the <code>sqlparse</code> package (<code>pip install sqlparse</code>). If not installed, a prompt will appear.</p></blockquote>
+
+  <h3 id="clear">5.6 Clearing the Editor</h3>
+  <p>Click <strong>Clear</strong> to:</p>
+  <ul>
+    <li>Empty the current editor tab.</li>
+    <li>Remove all <em>unpinned</em> result tabs.</li>
+  </ul>
+  <p>Pinned result tabs are preserved.</p>
+
+  <hr />
+
+  <!-- ── 6. Running Queries ──────────────────────────────── -->
+  <h2 id="running" class="section-anchor">6. Running Queries</h2>
+
+  <h3 id="execute">6.1 Executing the Full Script</h3>
+  <p>Press <kbd>F5</kbd> or click <strong>▶ Execute</strong>.</p>
+  <p>All statements in the editor are run in order. Each statement produces its own result tab:</p>
+<pre><code>SELECT * FROM users;          -- → result tab "Query 1"
+SELECT count(*) FROM orders;  -- → result tab "Query 2"
+UPDATE products SET active = true WHERE id = 5;  -- → "Query 3"</code></pre>
+  <p>The status bar shows total execution time when done.</p>
+
+  <h3 id="selection">6.2 Running a Selection Only</h3>
+  <p>Highlight any portion of SQL in the editor before pressing <kbd>F5</kbd>. Only the
+  selected text is sent to the server. This is useful for testing a single statement
+  within a larger script.</p>
+
+  <h3 id="row-limit">6.3 Setting a Row Limit</h3>
+  <p>The <strong>Row limit</strong> spinner in the toolbar controls how many rows are fetched per <code>SELECT</code> statement.</p>
+
+  <table>
+    <thead><tr><th>Setting</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td><code>1000</code> (default)</td><td>Fetch at most 1 000 rows</td></tr>
+      <tr><td><code>0</code> (Unlimited)</td><td>Fetch all rows. Use with caution on large tables.</td></tr>
+    </tbody>
+  </table>
+
+  <p>When results are truncated, a yellow warning banner appears at the top of the result tab.</p>
+  <div class="callout callout-warning"><p>Increasing the row limit on very large tables can make the application slow or use significant memory.</p></div>
+
+  <h3 id="cancel">6.4 Cancelling a Running Query</h3>
+  <p>If a query is taking too long:</p>
+  <ul>
+    <li>Click <strong>⏹ Cancel</strong> in the toolbar, or</li>
+    <li>Press <kbd>Escape</kbd>.</li>
+  </ul>
+  <p>PostgreSQL is sent a cancellation signal. The status bar shows <em>"Query cancelled."</em>
+  No error dialog appears. You can immediately run another query.</p>
+  <blockquote><p>Cancel is also available during EXPLAIN and EXPLAIN+ operations.</p></blockquote>
+
+  <hr />
+
+  <!-- ── 7. Results ──────────────────────────────────────── -->
+  <h2 id="results" class="section-anchor">7. Working with Results</h2>
+
+  <h3 id="result-types">7.1 Result Tab Types</h3>
+  <p>After execution, each statement gets its own tab:</p>
+
+  <table>
+    <thead><tr><th>What ran</th><th>Tab shows</th></tr></thead>
+    <tbody>
+      <tr><td><code>SELECT</code> or <code>RETURNING</code></td><td>A sortable, filterable table of rows</td></tr>
+      <tr><td><code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, DDL</td><td>A success message with the number of rows affected</td></tr>
+      <tr><td><code>EXPLAIN</code> / <code>EXPLAIN+</code></td><td>The query plan as monospace text</td></tr>
+      <tr><td>A failed statement</td><td>An error tab with the full error message (no popup dialog)</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="filtering">7.2 Filtering Rows</h3>
+  <p>Each result table has a <strong>Filter</strong> box in the top-right corner.</p>
+  <ol>
+    <li>Click the Filter box and start typing.</li>
+    <li>Rows that do not contain your text (in any column) are hidden instantly.</li>
+    <li>The match count updates live next to the filter box.</li>
+    <li>Clear the filter box to show all rows again.</li>
+  </ol>
+  <p>Filtering is case-insensitive and searches all columns simultaneously.
+  Type <code>null</code> to find rows with NULL values.</p>
+
+  <h3 id="sorting">7.3 Sorting Columns</h3>
+  <p>Click any column header to sort by that column ascending. Click again to sort
+  descending. Click a third time to remove the sort.</p>
+
+  <h3 id="copy-rows">7.4 Copying Rows to the Clipboard</h3>
+  <ol>
+    <li>Click a row to select it (hold <kbd>Ctrl</kbd> or <kbd>Shift</kbd> to select multiple rows).</li>
+    <li>Press <kbd>Ctrl+C</kbd>.</li>
+  </ol>
+  <p>The selected rows are copied as tab-separated values (TSV) with a header row.
+  Paste directly into Excel, Google Sheets, or a text editor.</p>
+
+  <h3 id="pin-tabs">7.5 Pinning and Renaming Result Tabs</h3>
+  <p>By default, result tabs are cleared each time you run a new query. To keep a tab:</p>
+
+  <h4>Pinning</h4>
+  <ol>
+    <li>Right-click the result tab.</li>
+    <li>Select <strong>Pin</strong>.</li>
+    <li>The tab title gains a 📌 prefix.</li>
+    <li>Pinned tabs survive subsequent query runs.</li>
+    <li>Right-click and select <strong>Unpin</strong> to restore normal behaviour.</li>
+  </ol>
+
+  <h4>Renaming</h4>
+  <ol>
+    <li>Right-click the result tab and select <strong>Rename…</strong>, or</li>
+    <li>Double-click the tab title.</li>
+    <li>Type a new name and press <kbd>Enter</kbd>.</li>
+  </ol>
+
+  <h3 id="nulls">7.6 NULL Values</h3>
+  <p>Database <code>NULL</code> values are displayed as grey italic <em>NULL</em> in result tables,
+  visually distinct from the string value <code>"NULL"</code>.</p>
+  <p>When exporting to CSV, <code>NULL</code> is written as an empty cell.</p>
+
+  <h3 id="export">7.7 Exporting Results</h3>
+  <p>Each result table has two export buttons:</p>
+
+  <h4>Export CSV</h4>
+  <ol>
+    <li>Click <strong>Export CSV</strong>.</li>
+    <li>Choose a save location.</li>
+    <li>A UTF-8 CSV file is created with a header row. <code>NULL</code> values become empty strings.</li>
+  </ol>
+
+  <h4>Export JSON</h4>
+  <ol>
+    <li>Click <strong>Export JSON</strong>.</li>
+    <li>Choose a save location.</li>
+    <li>A JSON array of objects is created. Special types are handled:
+      <ul>
+        <li>Dates and timestamps → ISO 8601 strings (e.g. <code>"2024-03-15T10:30:00"</code>)</li>
+        <li>Decimal numbers → floating-point numbers</li>
+        <li>Binary data → hex strings</li>
+      </ul>
+    </li>
+  </ol>
+  <blockquote><p>Exports always use the <strong>full unfiltered result set</strong>, regardless of what the filter box shows.</p></blockquote>
+
+  <hr />
+
+  <!-- ── 8. Transactions ─────────────────────────────────── -->
+  <h2 id="transactions" class="section-anchor">8. Transaction Mode</h2>
+
+  <h3 id="autocommit">8.1 Auto-commit (Default)</h3>
+  <p>When <strong>Auto-commit</strong> is checked (the default), every statement that runs is
+  immediately and permanently committed to the database. This is the simplest mode
+  and is suitable for most day-to-day querying.</p>
+
+  <h3 id="manual-tx">8.2 Manual Transaction Mode</h3>
+  <p>Uncheck <strong>Auto-commit</strong> in the toolbar to switch to manual mode. In this mode:</p>
+  <ul>
+    <li>Statements run inside an open transaction.</li>
+    <li>Changes are <strong>not visible</strong> to other database connections until you commit.</li>
+    <li>You can roll everything back if you make a mistake.</li>
+  </ul>
+
+  <p><strong>When to use manual mode:</strong></p>
+  <ul>
+    <li>Testing a complex migration before committing it.</li>
+    <li>Making a series of related changes that must all succeed or all be reverted.</li>
+    <li>Previewing the effect of a <code>DELETE</code> or <code>UPDATE</code> before making it permanent.</li>
+  </ul>
+
+  <p><strong>Example workflow:</strong></p>
+<pre><code>-- 1. Switch to manual mode (uncheck Auto-commit)
+
+-- 2. Run a destructive operation
+DELETE FROM orders WHERE created_at &lt; '2020-01-01';
+
+-- 3. Check the result
+SELECT count(*) FROM orders;
+
+-- 4a. If correct → click Commit
+-- 4b. If wrong   → click Rollback</code></pre>
+
+  <h3 id="commit">8.3 Committing</h3>
+  <p>Click <strong>Commit</strong> in the toolbar. All changes made since the last commit (or since
+  you switched to manual mode) are permanently saved.</p>
+
+  <h3 id="rollback">8.4 Rolling Back</h3>
+  <p>Click <strong>Rollback</strong> in the toolbar. All changes made since the last commit are
+  discarded. The database returns to its previous state.</p>
+
+  <blockquote>
+    <p><strong>Note:</strong> Disconnecting while a transaction is open causes the server to roll
+    it back automatically. Always commit or rollback before disconnecting if you want
+    to keep your changes.</p>
+    <p><strong>DDL and transactions:</strong> In PostgreSQL, DDL statements like <code>CREATE TABLE</code>
+    and <code>ALTER TABLE</code> are transactional. In manual mode, you can roll back a
+    <code>CREATE TABLE</code> just like a <code>DELETE</code>.</p>
+  </blockquote>
+
+  <hr />
+
+  <!-- ── 9. Schema Browser ───────────────────────────────── -->
+  <h2 id="schema" class="section-anchor">9. Schema Browser</h2>
+
+  <p>The <strong>Database Explorer</strong> panel on the left side of the window shows a live tree
+  of your database objects.</p>
+
+  <h3>9.1 Navigating the Tree</h3>
+
+<div class="ascii-diagram">public                          ← schema (bold)
+  ├── users  [T]                ← table [T] or view [V]
+  │     ├── Columns (3)
+  │     │     id         integer
+  │     │     name       text
+  │     │     created_at timestamp with time zone
+  │     ├── Indexes (2)
+  │     │     users_pkey          ← hover to see: CREATE UNIQUE INDEX...
+  │     │     users_email_idx
+  │     └── Foreign Keys (1)
+  │           fk_users_role_id   ← hover to see: FOREIGN KEY (role_id)...
+  └── Functions / Procedures (1)
+        get_active_users   integer</div>
+
+  <ul>
+    <li>Click the <strong>▶</strong> arrow next to any node to expand it.</li>
+    <li><strong>Hover</strong> over an index or foreign key name to see its full SQL definition in a tooltip.</li>
+    <li>Column data types are shown in the second column of the tree.</li>
+  </ul>
+
+  <h3>9.2 Inserting a SELECT Statement</h3>
+  <p><strong>Double-click a table or view</strong> to insert a ready-to-run SELECT statement at the cursor position in the active editor:</p>
+<pre><code>SELECT * FROM "public"."users" LIMIT 100;</code></pre>
+  <p><strong>Double-click a function</strong> to insert a SELECT call template:</p>
+<pre><code>SELECT "public"."get_active_users"();</code></pre>
+  <p>You can then edit the inserted SQL before running it.</p>
+
+  <h3>9.3 Refreshing the Schema</h3>
+  <p>The schema tree is loaded automatically when you connect. If you make schema changes
+  (e.g. <code>CREATE TABLE</code>, <code>ALTER TABLE</code>) click the <strong>Refresh</strong> button at the top of
+  the Schema Browser to reload the tree.</p>
+
+  <hr />
+
+  <!-- ── 10. Query History ───────────────────────────────── -->
+  <h2 id="history" class="section-anchor">10. Query History</h2>
+
+  <p>The <strong>Query History</strong> panel is at the bottom of the left dock, below the Schema Browser.</p>
+  <p>It stores the last <strong>100</strong> queries you have successfully executed, along with:</p>
+  <ul>
+    <li>The first 80 characters of the SQL (as a preview).</li>
+    <li>The date and time it was run.</li>
+    <li>How long it took to execute.</li>
+  </ul>
+
+  <h4>Using history</h4>
+  <ul>
+    <li><strong>Double-click</strong> any entry to load the full SQL into the active editor tab.</li>
+    <li><strong>Hover</strong> over an entry to see a tooltip with the complete SQL.</li>
+  </ul>
+
+  <h4>Managing history</h4>
+  <ul>
+    <li>Click <strong>Clear History</strong> to delete all entries.</li>
+    <li>History is saved between sessions and persists when you close and reopen Coruscant.</li>
+  </ul>
+
+  <blockquote><p>Consecutive identical queries are deduplicated. Re-running the same SQL updates the timestamp rather than adding a new entry.</p></blockquote>
+
+  <hr />
+
+  <!-- ── 11. Parameterized Queries ──────────────────────── -->
+  <h2 id="params" class="section-anchor">11. Parameterized Queries</h2>
+
+  <p>Parameterized queries let you write SQL with named placeholders and supply the values
+  separately. This is safer than string-concatenating values into SQL, and makes it easy
+  to re-run the same query with different inputs.</p>
+
+  <h3>Syntax</h3>
+  <p>Use <code>%(name)s</code> placeholders in your SQL:</p>
+<pre><code>SELECT * FROM orders
+WHERE customer_id = %(customer_id)s
+  AND status      = %(status)s
+  AND total       &gt; %(min_total)s;</code></pre>
+
+  <h3>Opening the Parameters Panel</h3>
+  <p>Click <strong>Parameters ▸</strong> in the top-right corner of the editor tab. The panel expands below the editor.</p>
+
+  <h3>Adding Parameters</h3>
+  <ol>
+    <li>Click <strong>Add Row</strong> in the Parameters panel.</li>
+    <li>Type the parameter name (without <code>%</code> or <code>()</code>) in the <strong>Parameter</strong> column.</li>
+    <li>Type the value in the <strong>Value</strong> column.</li>
+  </ol>
+
+  <table>
+    <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td><code>customer_id</code></td><td><code>1042</code></td></tr>
+      <tr><td><code>status</code></td><td><code>shipped</code></td></tr>
+      <tr><td><code>min_total</code></td><td><code>50.00</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Running</h3>
+  <p>Press <kbd>F5</kbd> as normal. Values are substituted safely before the query is sent
+  to PostgreSQL; there is no risk of SQL injection.</p>
+  <blockquote><p>The same parameter dictionary is applied to <strong>all statements</strong> in the editor.
+  If you have multiple statements, they all share the same parameters.</p></blockquote>
+
+  <h3>Removing Parameters</h3>
+  <p>Select a row in the Parameters panel and click <strong>Remove Row</strong>.</p>
+
+  <hr />
+
+  <!-- ── 12. EXPLAIN ─────────────────────────────────────── -->
+  <h2 id="explain" class="section-anchor">12. EXPLAIN and Query Plans</h2>
+
+  <p>EXPLAIN shows how PostgreSQL plans to execute a query without actually running it
+  (for <code>EXPLAIN</code>) or by running it and reporting real statistics (for <code>EXPLAIN+</code>).</p>
+
+  <h3>Explain</h3>
+  <p>Click <strong>Explain</strong> in the toolbar. Coruscant prepends <code>EXPLAIN</code> to the first
+  statement in the editor and runs it. The query plan appears in an <strong>ExplainResult</strong>
+  tab as formatted text.</p>
+<pre><code>Seq Scan on users  (cost=0.00..1.05 rows=5 width=36)
+  Filter: (active = true)</code></pre>
+
+  <h3>Explain+ (EXPLAIN ANALYZE)</h3>
+  <p>Click <strong>Explain+</strong> in the toolbar. This runs
+  <code>EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)</code>, so the query actually executes and
+  PostgreSQL reports real timing and buffer statistics.</p>
+<pre><code>Seq Scan on users  (cost=0.00..1.05 rows=5 width=36)
+                   (actual time=0.012..0.018 rows=5 loops=1)
+  Filter: (active = true)
+Planning Time: 0.1 ms
+Execution Time: 0.3 ms</code></pre>
+
+  <div class="callout callout-warning">
+    <p><strong>EXPLAIN+</strong> actually modifies the database if the statement is an INSERT,
+    UPDATE, or DELETE. Use with caution, or with <strong>Auto-commit</strong> off so you can
+    roll back.</p>
+  </div>
+
+  <blockquote><p>Only the <strong>first statement</strong> in the editor is explained, even if multiple statements are present.</p></blockquote>
+
+  <hr />
+
+  <!-- ── 13. Themes ──────────────────────────────────────── -->
+  <h2 id="themes" class="section-anchor">13. Themes</h2>
+
+  <p>Click the <strong>🌙</strong> (dark) or <strong>☀</strong> (light) button on the right side of the toolbar to switch themes.</p>
+
+  <table>
+    <thead><tr><th>Theme</th><th>Best for</th></tr></thead>
+    <tbody>
+      <tr><td>Dark (default)</td><td>Low-light environments, reduced eye strain</td></tr>
+      <tr><td>Light</td><td>Printing, presentations, bright environments</td></tr>
+    </tbody>
+  </table>
+
+  <p>Your preference is saved automatically and restored the next time you launch Coruscant.</p>
+
+  <hr />
+
+  <!-- ── 14. Shortcuts ───────────────────────────────────── -->
+  <h2 id="shortcuts" class="section-anchor">14. Keyboard Shortcuts Reference</h2>
+
+  <table>
+    <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>F5</kbd></td><td>Execute the full SQL script (or selection if text is selected)</td></tr>
+      <tr><td><kbd>Escape</kbd></td><td>Cancel the currently running query</td></tr>
+      <tr><td><kbd>Ctrl+T</kbd></td><td>Open a new editor tab</td></tr>
+      <tr><td><kbd>Ctrl+W</kbd></td><td>Close the current editor tab</td></tr>
+      <tr><td><kbd>Ctrl+Tab</kbd></td><td>Switch to the next editor tab</td></tr>
+      <tr><td><kbd>Ctrl+Shift+Tab</kbd></td><td>Switch to the previous editor tab</td></tr>
+      <tr><td><kbd>Ctrl+C</kbd> <em>(in a result table)</em></td><td>Copy selected rows to clipboard as TSV</td></tr>
+    </tbody>
+  </table>
+
+  <hr />
+
+  <!-- ── 15. Troubleshooting ─────────────────────────────── -->
+  <h2 id="troubleshooting" class="section-anchor">15. Troubleshooting</h2>
+
+  <h3>"Could not connect" error</h3>
+  <ul>
+    <li>Check that the PostgreSQL server is running.</li>
+    <li>Verify the host, port, database name, and credentials.</li>
+    <li>Check your firewall; port 5432 must be reachable from your machine.</li>
+    <li>Use <strong>Test Connection</strong> in the dialog to get a detailed error message.</li>
+    <li>If connecting to a remote server, try changing <strong>SSL mode</strong> to <code>require</code>.</li>
+  </ul>
+
+  <h3>Query runs but returns no results</h3>
+  <ul>
+    <li>Ensure you are connected to the correct database.</li>
+    <li>Check the <strong>Schema Browser</strong> to confirm the table exists in the expected schema.</li>
+    <li>If you used a row limit, try setting it to <code>0</code> (Unlimited).</li>
+  </ul>
+
+  <h3>Query seems to hang / never finishes</h3>
+  <ul>
+    <li>Click <strong>⏹ Cancel</strong> or press <kbd>Escape</kbd> to stop it.</li>
+    <li>Check whether the table is very large, or whether another session holds a lock.</li>
+    <li>Use <strong>Explain+</strong> to inspect the query plan and look for sequential scans on large tables.</li>
+  </ul>
+
+  <h3>"Auto-commit" toggle is greyed out</h3>
+  <p>The toggle is disabled while a query is running. Wait for it to finish (or cancel it) before changing transaction mode.</p>
+
+  <h3>Schema Browser is empty after connecting</h3>
+  <ul>
+    <li>Click <strong>Refresh</strong> in the Schema Browser header.</li>
+    <li>Confirm that your PostgreSQL user has <code>SELECT</code> privileges on <code>information_schema</code>.</li>
+  </ul>
+
+  <h3>Formatting does nothing / shows a warning</h3>
+  <p>Install <code>sqlparse</code>: <code>pip install sqlparse&gt;=0.4</code></p>
+
+  <h3>The app window is very small / cut off</h3>
+  <ul>
+    <li>Drag the splitter bar between the editor and results panels to resize them.</li>
+    <li>Drag the left dock border to widen the Schema Browser.</li>
+    <li>The window can be resized and maximised normally.</li>
+  </ul>
+
+  <h3>Error tab appears instead of results</h3>
+  <ul>
+    <li>Click the <strong>⚠ Error</strong> tab to read the full error message.</li>
+    <li>Common causes: syntax errors in SQL, missing tables, permission errors, type mismatches.</li>
+    <li>Fix the SQL in the editor and press <kbd>F5</kbd> again.</li>
+  </ul>
+
+  <hr />
+
+  <!-- ── 16. Security ────────────────────────────────────── -->
+  <h2 id="security" class="section-anchor">16. Security Guidance</h2>
+
+  <h3>Saved Passwords</h3>
+  <p>Connection passwords are encoded (base64) before being saved to your operating
+  system's settings store:</p>
+  <ul>
+    <li><strong>Windows:</strong> Registry (<code>HKEY_CURRENT_USER\Software\Coruscant</code>)</li>
+    <li><strong>macOS:</strong> <code>~/Library/Preferences/Coruscant.plist</code></li>
+    <li><strong>Linux:</strong> <code>~/.config/Coruscant/Coruscant.conf</code></li>
+  </ul>
+
+  <div class="callout callout-danger">
+    <p>This encoding <strong>is not encryption</strong>. Anyone with access to the settings store
+    can decode the passwords. On a shared or corporate machine, use the most restrictive
+    account permissions possible or consider entering the password manually each session.</p>
+  </div>
+
+  <h3>SSL Recommendations</h3>
+
+  <table>
+    <thead><tr><th>Environment</th><th>Recommended SSL mode</th></tr></thead>
+    <tbody>
+      <tr><td>Local development (<code>localhost</code>)</td><td><code>disable</code> or <code>prefer</code></td></tr>
+      <tr><td>Internal network, trusted</td><td><code>prefer</code></td></tr>
+      <tr><td>Internet / cloud database</td><td><code>require</code> or <code>verify-full</code></td></tr>
+      <tr><td>Regulated / sensitive data</td><td><code>verify-full</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Least-Privilege Database Users</h3>
+  <p>Connect with a PostgreSQL role that has only the permissions your work requires:</p>
+  <ul>
+    <li>Read-only analysis → <code>SELECT</code> privileges only.</li>
+    <li>Schema changes → include <code>CREATE</code>, <code>ALTER</code> as needed.</li>
+    <li>Avoid connecting as <code>postgres</code> (superuser) for routine work.</li>
+  </ul>
+
+  <h3>SQL Injection</h3>
+  <p>Coruscant uses <code>cursor.mogrify()</code> for parameterized queries, which safely escapes
+  all values. However, if you manually concatenate user-supplied strings into your SQL,
+  those queries are not protected. Always use the Parameters panel for variable values.</p>
+
+  <hr />
+
+  <footer>
+    <p><em>End of User Manual, Coruscant v0.9.0</em><br />
+    <em>Author: Marwa Trust Mutemasango</em></p>
+  </footer>
+
+</main>
+</body>
+</html>

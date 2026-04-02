@@ -1,5 +1,9 @@
 # Coruscant: PostgreSQL Multi-Query Tool
 
+<p align="center">
+  <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
+</p>
+
 **Version:** 0.9.1
 **Author:** Marwa Trust Mutemasango
 

@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 0.9.0
+**Version:** 0.9.1
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -49,15 +49,17 @@
    - 8.4 [Rolling Back](#84-rolling-back)
 9. [Schema Browser](#9-schema-browser)
    - 9.1 [Navigating the Tree](#91-navigating-the-tree)
-   - 9.2 [Inserting a SELECT Statement](#92-inserting-a-select-statement)
-   - 9.3 [Refreshing the Schema](#93-refreshing-the-schema)
+   - 9.2 [Generating Scripts from a Table](#92-generating-scripts-from-a-table)
+   - 9.3 [Inserting a SELECT Statement](#93-inserting-a-select-statement)
+   - 9.4 [Refreshing the Schema](#94-refreshing-the-schema)
 10. [Query History](#10-query-history)
 11. [Parameterized Queries](#11-parameterized-queries)
 12. [EXPLAIN and Query Plans](#12-explain-and-query-plans)
 13. [Themes](#13-themes)
-14. [Keyboard Shortcuts Reference](#14-keyboard-shortcuts-reference)
-15. [Troubleshooting](#15-troubleshooting)
-16. [Security Guidance](#16-security-guidance)
+14. [Logging](#14-logging)
+15. [Keyboard Shortcuts Reference](#15-keyboard-shortcuts-reference)
+16. [Troubleshooting](#16-troubleshooting)
+17. [Security Guidance](#17-security-guidance)
 
 ---
 
@@ -533,9 +535,50 @@ public                          ← schema (bold)
 - **Hover** over an index or foreign key name to see its full SQL definition in a tooltip.
 - Column data types are shown in the second column of the tree.
 
-### 9.2 Inserting a SELECT Statement
+### 9.2 Generating Scripts from a Table
 
-**Double-click a table or view** to insert a ready-to-run SELECT statement at the cursor position in the active editor:
+**Right-click any table or view** in the tree to open a script generator menu.
+
+| Menu option | What is inserted |
+|---|---|
+| **SELECT script** | `SELECT` with every column listed explicitly, a `WHERE` placeholder, and `LIMIT 100` |
+| **UPDATE script** | `UPDATE … SET` with a `col = ` placeholder for every column and a `WHERE` placeholder |
+| **DELETE script** | `DELETE FROM … WHERE` seeded with the table's first column |
+
+The script is inserted at the cursor position in the active editor tab but **not executed**. Fill in the placeholder values and press **F5** when ready.
+
+**Example — right-clicking a `users` table with columns `id`, `name`, `email`:**
+
+SELECT script:
+```sql
+SELECT
+    "id",
+    "name",
+    "email"
+FROM "public"."users"
+WHERE
+LIMIT 100;
+```
+
+UPDATE script:
+```sql
+UPDATE "public"."users"
+SET
+    "id" = ,
+    "name" = ,
+    "email" = 
+WHERE ;
+```
+
+DELETE script:
+```sql
+DELETE FROM "public"."users"
+WHERE "id" = ;
+```
+
+### 9.3 Inserting a SELECT Statement
+
+**Double-click a table or view** to insert a quick `SELECT *` at the cursor:
 
 ```sql
 SELECT * FROM "public"."users" LIMIT 100;
@@ -547,11 +590,11 @@ SELECT * FROM "public"."users" LIMIT 100;
 SELECT "public"."get_active_users"();
 ```
 
-You can then edit the inserted SQL before running it.
-
-### 9.3 Refreshing the Schema
+### 9.4 Refreshing the Schema
 
 The schema tree is loaded automatically when you connect. If you make schema changes (e.g. `CREATE TABLE`, `ALTER TABLE`) click the **Refresh** button at the top of the Schema Browser to reload the tree.
+
+> **Tip:** If the Schema Browser shows nothing after connecting, verify that you connected to the correct database. The `postgres` system database contains almost no user objects. Check the connection dialog's **Database** field.
 
 ---
 
@@ -650,7 +693,7 @@ Execution Time: 0.3 ms
 
 ---
 
-## 13. Themes
+## 13. Themes  
 
 Click the **🌙** (dark) or **☀** (light) button on the right side of the toolbar to switch themes.
 
@@ -663,7 +706,74 @@ Your preference is saved automatically and restored the next time you launch Cor
 
 ---
 
-## 14. Keyboard Shortcuts Reference
+## 14. Logging
+
+Coruscant writes a diagnostic log on every run. This is useful when
+troubleshooting connection problems or unexpected behaviour.
+
+### Log file location
+
+| Platform | Path |
+|---|---|
+| Windows | `%APPDATA%\Coruscant\logs\coruscant.log` |
+| macOS | `~/Library/Logs/Coruscant/coruscant.log` |
+| Linux | `~/.local/share/Coruscant/logs/coruscant.log` |
+
+The file rotates automatically at 5 MB and up to 3 backups are kept, so
+the logs never consume more than 15 MB on disk.
+
+### What is recorded
+
+| Level | Examples |
+|---|---|
+| `INFO` | App start (version, Python, Qt, OS), connect/disconnect, schema loaded, query completed, theme changed, clean shutdown |
+| `WARNING` | Result set truncated by row limit, query cancelled by user |
+| `ERROR` | Connection failures, query errors, schema errors |
+| `DEBUG` | Full SQL text, per-statement row counts and timing, Qt internal messages |
+
+By default only `INFO` and above are recorded. To capture everything
+including full SQL text, start Coruscant with the `DEBUG` level:
+
+**Windows:**
+```bat
+set CORUSCANT_LOG_LEVEL=DEBUG
+python main.py
+```
+
+**macOS / Linux:**
+```bash
+CORUSCANT_LOG_LEVEL=DEBUG python main.py
+```
+
+### Crash reports
+
+If Coruscant encounters an unexpected error that it cannot handle, it will:
+
+1. Write a `CRITICAL` log entry with the full error traceback.
+2. Show a dialog telling you what went wrong and the exact path to the log file.
+
+The log file is the first place to look when something goes wrong.
+
+### Reading the log
+
+Each line has the format:
+```
+2026-04-02 10:11:09.381 | INFO     | coruscant.core.database  | Connected  host=...
+```
+
+To monitor the log live while the app runs (Windows PowerShell):
+```powershell
+Get-Content "$env:APPDATA\Coruscant\logs\coruscant.log" -Wait -Tail 50
+```
+
+To filter for errors only:
+```powershell
+Select-String -Path "$env:APPDATA\Coruscant\logs\coruscant.log" -Pattern "ERROR|WARNING|CRITICAL"
+```
+
+---
+
+## 15. Keyboard Shortcuts Reference
 
 | Shortcut | Action |
 |---|---|
@@ -677,7 +787,11 @@ Your preference is saved automatically and restored the next time you launch Cor
 
 ---
 
-## 15. Troubleshooting
+## 16. Troubleshooting
+
+> **Before troubleshooting any issue:** check the log file first — it records
+> every connection attempt, query, and error with timestamps. See [Section 14](#14-logging)
+> for the file location and how to filter it.
 
 ### "Could not connect" error
 
@@ -705,8 +819,10 @@ Your preference is saved automatically and restored the next time you launch Cor
 
 ### Schema Browser is empty after connecting
 
+- Check that you connected to your **application database**, not the `postgres` system database. Open Connect and verify the **Database** field.
 - Click **Refresh** in the Schema Browser header.
 - Confirm that your PostgreSQL user has `SELECT` privileges on `information_schema`.
+- Check the log file — a successful load logs `Schema loaded  schemas=N  tables=N`. If `N=0` after connecting to the right database, a permissions issue is likely.
 
 ### Formatting does nothing / shows a warning
 
@@ -726,7 +842,7 @@ Your preference is saved automatically and restored the next time you launch Cor
 
 ---
 
-## 16. Security Guidance
+## 17. Security Guidance
 
 ### Saved Passwords
 
@@ -765,5 +881,5 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 
 ---
 
-*End of User Manual, Coruscant v0.9.0*
+*End of User Manual, Coruscant v0.9.1*
 *Author: Marwa Trust Mutemasango*

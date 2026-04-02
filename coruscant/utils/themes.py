@@ -90,6 +90,26 @@ def apply_dark(app: QApplication) -> None:
             border-radius: 3px; padding: 3px 6px; color: #ddd;
         }
         QLineEdit:focus, QSpinBox:focus, QComboBox:focus { border-color: #4361ee; }
+        QSpinBox::up-button, QSpinBox::down-button {
+            background: #4a4a4a; border: 1px solid #555; width: 16px;
+        }
+        QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #5a5a5a; }
+        QSpinBox::up-arrow {
+            border-left: 4px solid transparent; border-right: 4px solid transparent;
+            border-bottom: 5px solid #ccc; width: 0; height: 0;
+        }
+        QSpinBox::down-arrow {
+            border-left: 4px solid transparent; border-right: 4px solid transparent;
+            border-top: 5px solid #ccc; width: 0; height: 0;
+        }
+        QSpinBox::up-arrow:disabled, QSpinBox::down-arrow:disabled {
+            border-bottom-color: #555; border-top-color: #555;
+        }
+        QComboBox::drop-down { border: none; background: #4a4a4a; width: 20px; }
+        QComboBox::down-arrow {
+            border-left: 4px solid transparent; border-right: 4px solid transparent;
+            border-top: 5px solid #ccc; width: 0; height: 0;
+        }
         QPushButton {
             background: #3c3c3c; border: 1px solid #555;
             border-radius: 3px; padding: 4px 14px; color: #ddd;

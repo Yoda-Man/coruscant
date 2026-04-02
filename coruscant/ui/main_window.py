@@ -9,6 +9,9 @@ Responsibilities
   • Translate toolbar actions into calls on DatabaseManager / QueryWorker.
   • Route worker signals to the appropriate result widgets.
   • Manage editor-tab lifecycle and keyboard navigation.
+  • Persist and restore window geometry, dock positions, and splitter sizes
+    across sessions via QSettings.
+  • Log key lifecycle events (connect, disconnect, theme toggle, close).
 
 This class deliberately contains NO business logic.  SQL parsing, query
 execution, and schema fetching all live in coruscant.core.
@@ -18,13 +21,15 @@ Author: Marwa Trust Mutemasango
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget, QSplitter,
     QLabel, QToolBar, QFileDialog, QMessageBox, QSpinBox,
     QDockWidget, QApplication, QSizePolicy,
 )
 from PySide6.QtCore import Qt, QSize, QSettings
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QKeySequence, QShortcut, QCloseEvent
 
 from coruscant import __version__, __app_name__
 from coruscant.core.database import DatabaseManager, QueryResult, CommandResult
@@ -37,6 +42,8 @@ from coruscant.ui.panels.schema import SchemaBrowser
 from coruscant.ui.panels.history import HistoryPanel
 from coruscant.ui.dialogs.connection import ConnectionDialog
 import coruscant.utils.themes as themes
+
+log = logging.getLogger(__name__)
 
 _SETTINGS_ORG = "Coruscant"
 _SETTINGS_APP = "Coruscant"
@@ -64,6 +71,7 @@ class MainWindow(QMainWindow):
         self._build_shortcuts()
         self._update_ui_state()
         self.statusBar().showMessage("Ready  –  not connected")
+        self._restore_geometry()
 
     # ================================================================== #
     #  UI construction                                                     #
@@ -182,18 +190,18 @@ class MainWindow(QMainWindow):
             QDockWidget.DockWidgetFeature.DockWidgetClosable
         )
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        self._left_splitter = QSplitter(Qt.Orientation.Vertical)
 
         self._schema_browser = SchemaBrowser(self._db)
         self._schema_browser.insert_sql.connect(self._on_schema_insert_sql)
-        splitter.addWidget(self._schema_browser)
+        self._left_splitter.addWidget(self._schema_browser)
 
         self._history_panel = HistoryPanel()
         self._history_panel.query_selected.connect(self._on_history_selected)
-        splitter.addWidget(self._history_panel)
+        self._left_splitter.addWidget(self._history_panel)
 
-        splitter.setSizes([400, 200])
-        dock.setWidget(splitter)
+        self._left_splitter.setSizes([400, 200])
+        dock.setWidget(self._left_splitter)
         dock.setMinimumWidth(220)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
 
@@ -203,14 +211,14 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        self._central_splitter = QSplitter(Qt.Orientation.Vertical)
 
         # Editor tab widget
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setTabsClosable(True)
         self._editor_tabs.setMovable(True)
         self._editor_tabs.tabCloseRequested.connect(self._close_editor_tab)
-        splitter.addWidget(self._editor_tabs)
+        self._central_splitter.addWidget(self._editor_tabs)
         self._add_editor_tab()
 
         # Result area
@@ -230,9 +238,9 @@ class MainWindow(QMainWindow):
         self._result_tabs.hide()
         rl.addWidget(self._result_tabs)
 
-        splitter.addWidget(result_area)
-        splitter.setSizes([350, 450])
-        layout.addWidget(splitter)
+        self._central_splitter.addWidget(result_area)
+        self._central_splitter.setSizes([350, 450])
+        layout.addWidget(self._central_splitter)
         self.setCentralWidget(central)
 
     def _build_shortcuts(self) -> None:
@@ -240,6 +248,34 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Shift+Tab"), self, activated=self._prev_editor_tab)
         QShortcut(QKeySequence("Ctrl+W"),         self, activated=self._close_current_editor_tab)
         QShortcut(QKeySequence("Ctrl+T"),         self, activated=lambda: self._add_editor_tab())
+
+    # ================================================================== #
+    #  Window lifecycle                                                    #
+    # ================================================================== #
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        log.info("Application closing")
+        self._save_geometry()
+        if self._db.is_connected:
+            self._db.disconnect()
+        event.accept()
+
+    def _save_geometry(self) -> None:
+        self._settings.setValue("window/geometry",         self.saveGeometry())
+        self._settings.setValue("window/state",            self.saveState())
+        self._settings.setValue("window/central_splitter", self._central_splitter.saveState())
+        self._settings.setValue("window/left_splitter",    self._left_splitter.saveState())
+        log.debug("Window geometry saved")
+
+    def _restore_geometry(self) -> None:
+        if geom := self._settings.value("window/geometry"):
+            self.restoreGeometry(geom)
+        if state := self._settings.value("window/state"):
+            self.restoreState(state)
+        if central := self._settings.value("window/central_splitter"):
+            self._central_splitter.restoreState(central)
+        if left := self._settings.value("window/left_splitter"):
+            self._left_splitter.restoreState(left)
 
     # ================================================================== #
     #  Editor tab management                                               #
@@ -369,11 +405,13 @@ class MainWindow(QMainWindow):
             )
             self._schema_browser.set_connected(True)
         except Exception as exc:
+            log.error("Connection rejected by UI: %s", exc)
             QMessageBox.critical(self, "Connection Error",
                                  f"Could not connect:\n\n{exc}")
         self._update_ui_state()
 
     def _on_disconnect(self) -> None:
+        log.info("User initiated disconnect")
         self._db.disconnect()
         self.statusBar().showMessage("Disconnected.")
         self._schema_browser.set_connected(False)
@@ -553,11 +591,13 @@ class MainWindow(QMainWindow):
             themes.save_theme(self._settings, "light")
             self._act_theme.setText("☀")
             self._act_theme.setToolTip("Switch to dark theme")
+            log.info("Theme changed: dark → light")
         else:
             themes.apply_dark(app)
             themes.save_theme(self._settings, "dark")
             self._act_theme.setText("🌙")
             self._act_theme.setToolTip("Switch to light theme")
+            log.info("Theme changed: light → dark")
 
     # ================================================================== #
     #  Dock / panel signal handlers                                        #

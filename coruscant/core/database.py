@@ -6,11 +6,21 @@ PostgreSQL connection management and query execution.
 No GUI imports.  This module is the application's single point of contact
 with the database driver.
 
+Logging
+-------
+INFO  : connect (host/port/db/user/ssl — password never logged), disconnect,
+        successful execution summary (statement count).
+DEBUG : per-statement SQL preview (first 120 chars), row count, elapsed ms,
+        command results with rows_affected.
+WARNING : truncated result sets.
+ERROR : connection failures and query errors (first line of the pg message).
+
 Author: Marwa Trust Mutemasango
 """
 
 from __future__ import annotations
 
+import logging
 import time
 
 import psycopg2
@@ -18,6 +28,8 @@ import psycopg2.extras
 import psycopg2.extensions
 
 from coruscant.core.sql import split_statements
+
+log = logging.getLogger(__name__)
 
 # SQLSTATE 57014 — sent by PostgreSQL when pg_cancel_backend() fires.
 PGCODE_QUERY_CANCELED = "57014"
@@ -94,21 +106,29 @@ class DatabaseManager:
         if self._conn and not self._conn.closed:
             self._conn.close()
 
-        self._conn = psycopg2.connect(
-            host=host,
-            port=int(port),
-            dbname=database,
-            user=user,
-            password=password,
-            connect_timeout=10,
-            sslmode=ssl_mode,
-        )
-        self._conn.autocommit = True
+        log.info("Connecting  host=%s  port=%s  db=%s  user=%s  ssl=%s",
+                 host, port, database, user, ssl_mode)
+        try:
+            self._conn = psycopg2.connect(
+                host=host,
+                port=int(port),
+                dbname=database,
+                user=user,
+                password=password,
+                connect_timeout=10,
+                sslmode=ssl_mode,
+            )
+            self._conn.autocommit = True
+        except psycopg2.OperationalError:
+            log.exception("Connection failed  host=%s  port=%s  db=%s", host, port, database)
+            raise
+        log.info("Connected  host=%s  port=%s  db=%s", host, port, database)
 
     def disconnect(self) -> None:
         """Close the connection if open."""
         if self._conn and not self._conn.closed:
             self._conn.close()
+            log.info("Disconnected")
         self._conn = None
 
     def cancel(self) -> None:
@@ -203,12 +223,15 @@ class DatabaseManager:
         if not stmts:
             raise ValueError("No SQL statements found.")
 
+        log.debug("Executing %d statement(s)  row_limit=%s", len(stmts), row_limit or "unlimited")
         results: list[StatementResult] = []
 
         try:
             with self._conn.cursor() as cur:  # type: ignore[union-attr]
                 for idx, stmt in enumerate(stmts, start=1):
                     label   = f"Query {idx}"
+                    preview = stmt.strip().replace("\n", " ")[:120]
+                    log.debug("[%d/%d] %s", idx, len(stmts), preview)
                     t_start = time.perf_counter()
 
                     try:
@@ -238,11 +261,20 @@ class DatabaseManager:
                         else:
                             rows = cur.fetchall()
 
+                        if truncated:
+                            log.warning("[%d/%d] Result truncated at %d rows  (%.1f ms)",
+                                        idx, len(stmts), len(rows), elapsed_ms)
+                        else:
+                            log.debug("[%d/%d] %d row(s) returned  (%.1f ms)",
+                                      idx, len(stmts), len(rows), elapsed_ms)
+
                         results.append(
                             QueryResult(label, columns, rows, elapsed_ms, truncated)
                         )
                     else:
                         affected = cur.rowcount if cur.rowcount >= 0 else "N/A"
+                        log.debug("[%d/%d] Command OK  rows_affected=%s  (%.1f ms)",
+                                  idx, len(stmts), affected, elapsed_ms)
                         results.append(
                             CommandResult(
                                 label,
@@ -251,12 +283,14 @@ class DatabaseManager:
                             )
                         )
 
-        except psycopg2.Error:
+        except psycopg2.Error as exc:
+            log.error("Query failed: %s", str(exc).strip().splitlines()[0])
             # If the error closed the connection, null it so is_connected → False
             if self._conn and self._conn.closed:
                 self._conn = None
             raise
 
+        log.info("Executed %d statement(s) successfully", len(results))
         return results
 
     # ------------------------------------------------------------------ #

@@ -16,21 +16,42 @@ Tree layout
     └── Functions / Procedures (n)
           fn_name   return_type
 
+Interactions
+------------
 Double-clicking a table emits ``insert_sql`` with a SELECT template.
 Double-clicking a function emits ``insert_sql`` with a SELECT call template.
+Right-clicking a table shows a context menu with three script generators:
+  • SELECT script — all columns, WHERE placeholder, LIMIT 100
+  • UPDATE script — SET clause for every column, WHERE placeholder
+  • DELETE script — WHERE clause seeded with the first column
+
+All three emit ``insert_sql``; the script is inserted at the cursor in the
+active editor tab but not executed.
+
+Logging
+-------
+Schema refresh start and completion (schemas/tables count) are logged at
+INFO.  Errors from the background worker are logged at ERROR.  Any
+unexpected exception during tree construction is caught, logged at ERROR
+with a full traceback, and surfaced as a status-bar message so the UI
+never silently stalls.
 
 Author: Marwa Trust Mutemasango
 """
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QTreeWidget, QTreeWidgetItem, QStackedWidget,
+    QLabel, QTreeWidget, QTreeWidgetItem, QStackedWidget, QMenu,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 
 from coruscant.core.database import DatabaseManager
+
+log = logging.getLogger(__name__)
 
 
 class _SchemaWorker(QThread):
@@ -44,9 +65,11 @@ class _SchemaWorker(QThread):
         self._db = db
 
     def run(self) -> None:
+        log.info("Schema refresh started")
         try:
             self.finished.emit(self._db.get_schema_tree())
         except Exception as exc:
+            log.exception("Schema fetch failed")
             self.error.emit(str(exc))
 
 
@@ -93,6 +116,8 @@ class SchemaBrowser(QWidget):
         self._tree.setColumnWidth(0, 160)
         self._tree.header().setStretchLastSection(True)
         self._tree.itemDoubleClicked.connect(self._on_double_click)
+        self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._tree.customContextMenuRequested.connect(self._on_context_menu)
         self._stack.addWidget(self._tree)     # index 1
 
         layout.addWidget(self._stack)
@@ -137,9 +162,20 @@ class SchemaBrowser(QWidget):
         f = item.font(0); f.setItalic(True); item.setFont(0, f)
 
     def _on_tree_loaded(self, tree: list) -> None:
+        try:
+            self._populate_tree(tree)
+        except Exception:
+            log.exception("Unexpected error while building schema tree")
+            self._refresh_btn.setEnabled(True)
+            self._status.setText("Error building tree — see log")
+
+    def _populate_tree(self, tree: list) -> None:
         self._refresh_btn.setEnabled(True)
         self._status.setText("")
         self._tree.clear()
+
+        table_count = sum(len(s.get("tables", [])) for s in tree)
+        log.info("Schema loaded  schemas=%d  tables=%d", len(tree), table_count)
 
         for schema_info in tree:
             schema_name = schema_info["schema"]
@@ -187,12 +223,14 @@ class SchemaBrowser(QWidget):
                          {"kind": "table", "schema": schema, "table": name})
         tbl_item.setToolTip(0, f"{ttype}  {schema}.{name}")
 
-        def _subgroup(label: str, items: list, item_fn) -> QTreeWidgetItem | None:
+        def _subgroup(label: str, items: list, item_fn, kind: str = "") -> QTreeWidgetItem | None:
             if not items:
                 return None
             group = QTreeWidgetItem([label, str(len(items))])
             self._make_italic(group)
             group.setForeground(0, Qt.GlobalColor.gray)
+            if kind:
+                group.setData(0, Qt.ItemDataRole.UserRole, {"kind": kind})
             for data in items:
                 child = item_fn(data)
                 group.addChild(child)
@@ -221,7 +259,7 @@ class SchemaBrowser(QWidget):
             return fi
 
         for grp in [
-            _subgroup("Columns",      tbl.get("columns", []),      _col),
+            _subgroup("Columns",      tbl.get("columns", []),      _col, "col_group"),
             _subgroup("Indexes",      tbl.get("indexes", []),      _idx),
             _subgroup("Foreign Keys", tbl.get("foreign_keys", []), _fk),
         ]:
@@ -231,6 +269,7 @@ class SchemaBrowser(QWidget):
         return tbl_item
 
     def _on_tree_error(self, message: str) -> None:
+        log.error("Schema load error: %s", message)
         self._refresh_btn.setEnabled(True)
         self._status.setText(f"Error: {message[:60]}")
 
@@ -244,3 +283,68 @@ class SchemaBrowser(QWidget):
         elif data.get("kind") == "function":
             s, n = data["schema"], data["name"]
             self.insert_sql.emit(f'SELECT "{s}"."{n}"();')
+
+    def _on_context_menu(self, pos) -> None:
+        item = self._tree.itemAt(pos)
+        if not item:
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data or data.get("kind") != "table":
+            return
+
+        schema = data["schema"]
+        table  = data["table"]
+        cols   = self._columns_for_item(item)
+
+        menu = QMenu(self._tree)
+        menu.addAction("SELECT script",  lambda: self.insert_sql.emit(self._sql_select(schema, table, cols)))
+        menu.addAction("UPDATE script",  lambda: self.insert_sql.emit(self._sql_update(schema, table, cols)))
+        menu.addAction("DELETE script",  lambda: self.insert_sql.emit(self._sql_delete(schema, table, cols)))
+        menu.exec(self._tree.viewport().mapToGlobal(pos))
+
+    @staticmethod
+    def _columns_for_item(table_item: QTreeWidgetItem) -> list[str]:
+        """Walk the table item's children and return column names in order."""
+        cols: list[str] = []
+        for i in range(table_item.childCount()):
+            group = table_item.child(i)
+            if group:
+                d = group.data(0, Qt.ItemDataRole.UserRole)
+                if d and d.get("kind") == "col_group":
+                    for j in range(group.childCount()):
+                        col_item = group.child(j)
+                        if col_item:
+                            cd = col_item.data(0, Qt.ItemDataRole.UserRole)
+                            if cd and cd.get("kind") == "column":
+                                cols.append(cd["column"])
+                    break
+        return cols
+
+    @staticmethod
+    def _sql_select(schema: str, table: str, cols: list[str]) -> str:
+        if cols:
+            col_list = ",\n    ".join(f'"{c}"' for c in cols)
+            return (
+                f'SELECT\n    {col_list}\n'
+                f'FROM "{schema}"."{table}"\n'
+                f'WHERE \nLIMIT 100;'
+            )
+        return f'SELECT *\nFROM "{schema}"."{table}"\nWHERE \nLIMIT 100;'
+
+    @staticmethod
+    def _sql_update(schema: str, table: str, cols: list[str]) -> str:
+        if cols:
+            set_clause = ",\n    ".join(f'"{c}" = ' for c in cols)
+            return (
+                f'UPDATE "{schema}"."{table}"\nSET\n    {set_clause}\n'
+                f'WHERE ;'
+            )
+        return f'UPDATE "{schema}"."{table}"\nSET\n    \nWHERE ;'
+
+    @staticmethod
+    def _sql_delete(schema: str, table: str, cols: list[str]) -> str:
+        if cols:
+            # Suggest filtering by the first column as a starting point
+            first = cols[0]
+            return f'DELETE FROM "{schema}"."{table}"\nWHERE "{first}" = ;'
+        return f'DELETE FROM "{schema}"."{table}"\nWHERE ;'

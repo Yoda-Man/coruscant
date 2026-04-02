@@ -1,6 +1,6 @@
 # Coruscant: PostgreSQL Multi-Query Tool
 
-**Version:** 0.9.0
+**Version:** 0.9.1
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -93,9 +93,10 @@ iterating on a query.
 15. [Exporting Results](#exporting-results)
 16. [Keyboard Shortcuts](#keyboard-shortcuts)
 17. [Themes](#themes)
-18. [Security Notes](#security-notes)
-19. [Known Limitations](#known-limitations)
-20. [Changelog](#changelog)
+18. [Logging](#logging)
+19. [Security Notes](#security-notes)
+20. [Known Limitations](#known-limitations)
+21. [Changelog](#changelog)
 
 ---
 
@@ -231,7 +232,7 @@ Coruscant follows a clean layered architecture. All layers are inside the
 ```
 coruscant/
 ├── __init__.py          # __version__, __author__, __app_name__
-├── app.py               # QApplication factory (theme + settings)
+├── app.py               # QApplication factory (theme, Qt message handler, env snapshot)
 │
 ├── core/                # Business logic — no GUI imports
 │   ├── database.py      # DatabaseManager (connect, execute, transaction)
@@ -239,7 +240,7 @@ coruscant/
 │   └── sql.py           # split_statements() — pure SQL parser
 │
 ├── ui/                  # Presentation layer
-│   ├── main_window.py   # MainWindow — coordinator, no business logic
+│   ├── main_window.py   # MainWindow — coordinator, geometry persistence, no business logic
 │   ├── widgets/
 │   │   ├── editor.py    # EditorTab, ParamsPanel
 │   │   ├── results.py   # ResultGrid, MessageResult, ExplainResult, ErrorResult
@@ -247,11 +248,12 @@ coruscant/
 │   ├── dialogs/
 │   │   └── connection.py  # ConnectionDialog
 │   └── panels/
-│       ├── schema.py    # SchemaBrowser + _SchemaWorker
+│       ├── schema.py    # SchemaBrowser + _SchemaWorker (context menu script generator)
 │       └── history.py   # HistoryPanel
 │
 └── utils/               # Shared utilities — no cross-layer dependencies
     ├── highlighter.py   # SQLHighlighter (QSyntaxHighlighter)
+    ├── logging_config.py  # setup_logging() — rotating file handler + excepthook
     ├── serializers.py   # json_default() for psycopg2 types
     └── themes.py        # apply_dark(), apply_light(), current_theme()
 ```
@@ -428,6 +430,10 @@ public  (schema)
 - **Hover** over an index or FK to see its full definition.
 - **Double-click a table/view** → inserts `SELECT * FROM "schema"."table" LIMIT 100;`
 - **Double-click a function** → inserts `SELECT "schema"."fn"();`
+- **Right-click a table** → context menu with three script generators:
+  - **SELECT script** — explicit column list, `WHERE` placeholder, `LIMIT 100`
+  - **UPDATE script** — `SET` clause for every column, `WHERE` placeholder
+  - **DELETE script** — `WHERE` clause seeded with the first column
 - Click **Refresh** after schema changes.
 
 ---
@@ -509,6 +515,46 @@ The preference persists across sessions.
 
 ---
 
+## Logging
+
+Coruscant writes a structured log on every run.
+
+**Log file location**
+
+| Platform | Path |
+|---|---|
+| Windows | `%APPDATA%\Coruscant\logs\coruscant.log` |
+| macOS | `~/Library/Logs/Coruscant/coruscant.log` |
+| Linux | `~/.local/share/Coruscant/logs/coruscant.log` |
+
+Files rotate at 5 MB; up to 3 backups are kept (15 MB total).
+
+**Log levels**
+
+| Level | What is recorded |
+|---|---|
+| `INFO` *(default)* | App start with version + Python + Qt + OS, connect/disconnect, schema load (schema/table counts), query execution summaries, theme changes, clean shutdown |
+| `WARNING` | Truncated result sets, cancelled queries |
+| `ERROR` | Connection failures, query errors, schema load errors, unexpected exceptions |
+| `DEBUG` | Full SQL preview (120 chars), per-statement row counts and elapsed time, Qt internal messages |
+
+**Enabling DEBUG mode**
+
+```bash
+# Windows
+set CORUSCANT_LOG_LEVEL=DEBUG
+python main.py
+
+# macOS / Linux
+CORUSCANT_LOG_LEVEL=DEBUG python main.py
+```
+
+**Crash handling**
+
+Unhandled exceptions are caught by a custom `sys.excepthook`, logged with a full traceback at `CRITICAL` level, and shown to the user in a dialog that includes the log file path. The Qt internal message system is also routed into the log under the `Qt` logger name.
+
+---
+
 ## Security Notes
 
 - **Saved passwords** are base64-encoded in the OS settings store
@@ -532,6 +578,17 @@ The preference persists across sessions.
 ---
 
 ## Changelog
+
+### 0.9.1
+- **Structured logging** — rotating log file written on every run (`logging_config.py`).
+  Level controlled by `CORUSCANT_LOG_LEVEL` env var; default `INFO`, set `DEBUG` for full SQL traces.
+- **Crash handler** — `sys.excepthook` logs unhandled exceptions with full tracebacks and shows a user-facing dialog with the log file path.
+- **Qt message routing** — Qt's internal warnings and errors are now captured via `qInstallMessageHandler` and written to the log under the `Qt` logger.
+- **Startup environment snapshot** — each session logs Python, PySide6, Qt, and OS version at `INFO`.
+- **Window geometry persistence** — window size, position, dock layout, and both splitter positions are saved to QSettings on close and restored on next launch.
+- **Graceful shutdown** — `closeEvent` logs the shutdown, saves geometry, and disconnects cleanly from the database.
+- **Schema browser context menu** — right-click any table to generate a ready-to-edit SELECT, UPDATE, or DELETE script populated with the table's actual column names.
+- **Dark mode arrow fix** — QSpinBox and QComboBox up/down/drop-down arrows are now visible in dark mode using CSS triangle rendering.
 
 ### 0.9.0  *(initial public release)*
 - Renamed from DBClient → **Coruscant**

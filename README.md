@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 0.9.1
+**Version:** 0.9.2
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -170,7 +170,7 @@ Coruscant uses [PyInstaller](https://pyinstaller.org) to produce self-contained 
 Pushing a version tag triggers the `.github/workflows/release.yml` workflow, which builds all three platforms in parallel and publishes a GitHub Release with the artifacts attached.
 
 ```bash
-git tag v0.9.1
+git tag v0.9.2
 git push --tags
 ```
 
@@ -582,6 +582,9 @@ Unhandled exceptions are caught by a custom `sys.excepthook`, logged with a full
 ---
 
 ## Changelog
+
+### 0.9.2
+- Documentation cleanup and repository hygiene improvements.
 
 ### 0.9.1
 - **Structured logging** — rotating log file written on every run (`logging_config.py`).

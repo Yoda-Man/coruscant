@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 0.9.1
+**Version:** 0.9.2
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -881,5 +881,5 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 
 ---
 
-*End of User Manual, Coruscant v0.9.1*
+*End of User Manual, Coruscant v0.9.2*
 *Author: Marwa Trust Mutemasango*

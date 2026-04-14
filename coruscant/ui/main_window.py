@@ -25,9 +25,10 @@ import logging
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget, QSplitter,
-    QLabel, QToolBar, QFileDialog, QMessageBox, QSpinBox,
+    QLabel, QToolBar, QFileDialog, QSpinBox,
     QDockWidget, QApplication, QSizePolicy,
 )
+from coruscant.ui.dialogs.message import StyledMessageBox
 from PySide6.QtCore import Qt, QSize, QSettings
 from PySide6.QtGui import QAction, QKeySequence, QShortcut, QCloseEvent
 
@@ -181,6 +182,52 @@ class MainWindow(QMainWindow):
             "color: #e57373; font-weight: bold; padding-right: 10px;"
         )
         tb.addWidget(self._conn_label)
+
+        self._style_toolbar_buttons(tb)
+
+    def _style_toolbar_buttons(self, tb: QToolBar) -> None:
+        """Apply semantic color coding to each toolbar button."""
+
+        def _ss(base: str, hover: str, pressed: str,
+                bold: bool = False, text: str = "#ffffff") -> str:
+            fw = "700" if bold else "400"
+            return (
+                f"QToolButton {{"
+                f" background:{base}; color:{text}; border:none;"
+                f" border-radius:4px; padding:5px 13px;"
+                f" font-weight:{fw}; font-size:12px; min-width:46px;"
+                f"}}"
+                f"QToolButton:hover   {{ background:{hover}; }}"
+                f"QToolButton:pressed {{ background:{pressed}; }}"
+                f"QToolButton:checked {{ background:{pressed};"
+                f" border:1px solid {hover}; }}"
+                f"QToolButton:disabled {{ background:#1c1c1c;"
+                f" color:#444; border:none; }}"
+            )
+
+        specs = [
+            # (action,               base,      hover,     pressed,    bold)
+            (self._act_connect,    "#1565C0", "#1976D2", "#0D47A1", True),
+            (self._act_disconnect, "#B71C1C", "#C62828", "#7F0000", False),
+            (self._act_execute,    "#1B5E20", "#2E7D32", "#145214", True),
+            (self._act_cancel,     "#BF360C", "#D84315", "#8B1A00", False),
+            (self._act_explain,    "#4A148C", "#6A1B9A", "#38006B", False),
+            (self._act_explain_a,  "#880E4F", "#AD1457", "#6A0036", False),
+            (self._act_format,     "#006064", "#00838F", "#004040", False),
+            (self._act_clear,      "#4E342E", "#6D4C41", "#3E2723", False),
+            (self._act_open,       "#37474F", "#455A64", "#263238", False),
+            (self._act_save,       "#37474F", "#455A64", "#263238", False),
+            (self._act_new_tab,    "#1A237E", "#283593", "#0D1442", False),
+            (self._act_autocommit, "#1A3A4C", "#1E4D66", "#0F2233", False),
+            (self._act_commit,     "#1B5E20", "#2E7D32", "#145214", False),
+            (self._act_rollback,   "#B71C1C", "#C62828", "#7F0000", False),
+            (self._act_theme,      "#212121", "#2D2D2D", "#0A0A0A", False),
+        ]
+
+        for act, base, hover, pressed, bold in specs:
+            btn = tb.widgetForAction(act)
+            if btn:
+                btn.setStyleSheet(_ss(base, hover, pressed, bold))
 
     def _build_left_dock(self) -> None:
         dock = QDockWidget("Database Explorer", self)
@@ -366,6 +413,8 @@ class MainWindow(QMainWindow):
         )
         autocommit = self._act_autocommit.isChecked()
 
+        self._act_connect.setVisible(not connected)
+        self._act_disconnect.setVisible(connected)
         self._act_connect.setEnabled(not connected)
         self._act_disconnect.setEnabled(connected and not busy)
         self._act_execute.setEnabled(connected and not busy)
@@ -406,7 +455,7 @@ class MainWindow(QMainWindow):
             self._schema_browser.set_connected(True)
         except Exception as exc:
             log.error("Connection rejected by UI: %s", exc)
-            QMessageBox.critical(self, "Connection Error",
+            StyledMessageBox.critical(self, "Connection Error",
                                  f"Could not connect:\n\n{exc}")
         self._update_ui_state()
 
@@ -497,7 +546,7 @@ class MainWindow(QMainWindow):
             mode = "auto-commit" if checked else "manual transaction"
             self.statusBar().showMessage(f"Switched to {mode} mode.")
         except Exception as exc:
-            QMessageBox.critical(self, "Transaction Mode Error", str(exc))
+            StyledMessageBox.critical(self, "Transaction Mode Error", str(exc))
         self._update_ui_state()
 
     def _on_commit(self) -> None:
@@ -505,7 +554,7 @@ class MainWindow(QMainWindow):
             self._db.commit()
             self.statusBar().showMessage("Transaction committed.")
         except Exception as exc:
-            QMessageBox.critical(self, "Commit Error", str(exc))
+            StyledMessageBox.critical(self, "Commit Error", str(exc))
         self._update_ui_state()
 
     def _on_rollback(self) -> None:
@@ -513,14 +562,14 @@ class MainWindow(QMainWindow):
             self._db.rollback()
             self.statusBar().showMessage("Transaction rolled back.")
         except Exception as exc:
-            QMessageBox.critical(self, "Rollback Error", str(exc))
+            StyledMessageBox.critical(self, "Rollback Error", str(exc))
         self._update_ui_state()
 
     def _on_format_sql(self) -> None:
         try:
             import sqlparse
         except ImportError:
-            QMessageBox.warning(self, "sqlparse not installed",
+            StyledMessageBox.warning(self, "sqlparse not installed",
                                 "pip install sqlparse>=0.4")
             return
         tab = self._current_editor_tab()
@@ -565,7 +614,7 @@ class MainWindow(QMainWindow):
                 tab.set_sql(content)
             self.statusBar().showMessage(f"Opened: {path}")
         except OSError as exc:
-            QMessageBox.critical(self, "Open File", str(exc))
+            StyledMessageBox.critical(self, "Open File", str(exc))
 
     def _on_save(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -581,7 +630,7 @@ class MainWindow(QMainWindow):
                 fh.write(content)
             self.statusBar().showMessage(f"Saved: {path}")
         except OSError as exc:
-            QMessageBox.critical(self, "Save File", str(exc))
+            StyledMessageBox.critical(self, "Save File", str(exc))
 
     def _on_toggle_theme(self) -> None:
         app     = QApplication.instance()

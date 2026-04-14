@@ -12,13 +12,18 @@ Author: Marwa Trust Mutemasango
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QSpinBox, QPushButton,
     QDialogButtonBox, QVBoxLayout, QHBoxLayout,
-    QComboBox, QGroupBox, QMessageBox,
+    QComboBox, QGroupBox, QLabel,
 )
-from PySide6.QtCore import QSettings
+from coruscant.ui.dialogs.message import StyledMessageBox
+from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import QPixmap, QFont
+
+_BANNER_PATH = str(Path(__file__).resolve().parents[3] / "docs" / "coruscant3.png")
 
 _SETTINGS_ORG = "Coruscant"
 _SETTINGS_APP = "Coruscant"
@@ -84,8 +89,60 @@ class ConnectionDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Connect to PostgreSQL")
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(500)
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        self.setStyleSheet("""
+            QGroupBox {
+                border: 1px solid #313244;
+                border-radius: 6px;
+                margin-top: 12px;
+                padding-top: 4px;
+                font-weight: bold;
+                font-size: 11px;
+                color: #89b4fa;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 6px;
+            }
+            QLineEdit, QSpinBox, QComboBox {
+                background: #2a2a3a;
+                border: 1px solid #44446a;
+                border-radius: 4px;
+                padding: 5px 8px;
+                color: #e0e0e0;
+                font-size: 12px;
+                min-height: 24px;
+            }
+            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+                border: 1px solid #4361ee;
+                background: #2e2e45;
+            }
+            QLabel {
+                color: #cdd6f4;
+                font-size: 12px;
+            }
+            QPushButton {
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #3c3c52, stop:1 #2e2e42);
+                border: 1px solid #555570;
+                border-radius: 4px;
+                padding: 6px 18px;
+                color: #ddd;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #4a4a62, stop:1 #3c3c52);
+                border-color: #7070a0;
+            }
+            QPushButton:pressed {
+                background: #4361ee;
+                color: #fff;
+                border-color: #4361ee;
+            }
+        """)
         self._build_ui()
         self._load_recent()
 
@@ -94,22 +151,48 @@ class ConnectionDialog(QDialog):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setSpacing(10)
+        root.setContentsMargins(12, 0, 12, 12)
+
+        # ── Banner image ──────────────────────────────────────────────── #
+        banner = QLabel()
+        banner.setFixedHeight(130)
+        banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pixmap = QPixmap(_BANNER_PATH)
+        if not pixmap.isNull():
+            banner.setPixmap(
+                pixmap.scaledToHeight(130, Qt.TransformationMode.SmoothTransformation)
+            )
+        else:
+            banner.setText("✦  Coruscant  ✦")
+            f = QFont(); f.setPointSize(18); f.setBold(True)
+            banner.setFont(f)
+        banner.setStyleSheet(
+            "background: #0d0d1a; border-radius: 0; margin: 0; padding: 0;"
+        )
+        root.setContentsMargins(0, 0, 0, 12)
+        root.addWidget(banner)
+
+        # ── Padded inner content ──────────────────────────────────────── #
+        inner = QVBoxLayout()
+        inner.setContentsMargins(12, 0, 12, 0)
+        inner.setSpacing(10)
 
         # Recent connections
         recent_box = QGroupBox("Recent connections")
         rl = QHBoxLayout(recent_box)
-        rl.setContentsMargins(8, 8, 8, 8)
+        rl.setContentsMargins(10, 10, 10, 10)
         self._recent_combo = QComboBox()
         self._recent_combo.setPlaceholderText("Select a saved connection…")
         self._recent_combo.currentIndexChanged.connect(self._on_recent_selected)
         rl.addWidget(self._recent_combo)
-        root.addWidget(recent_box)
+        inner.addWidget(recent_box)
 
         # Fields
         fields_box = QGroupBox("Connection parameters")
         form = QFormLayout(fields_box)
-        form.setContentsMargins(12, 12, 12, 12)
-        form.setVerticalSpacing(8)
+        form.setContentsMargins(14, 14, 14, 14)
+        form.setVerticalSpacing(10)
+        form.setHorizontalSpacing(12)
 
         self._host     = QLineEdit("localhost")
         self._port     = QSpinBox(); self._port.setRange(1, 65535); self._port.setValue(5432)
@@ -123,17 +206,39 @@ class ConnectionDialog(QDialog):
         self._ssl_mode.setCurrentText("prefer")
         self._ssl_mode.setToolTip(SSL_TOOLTIP)
 
+        self._database.setPlaceholderText("database name")
+        self._user.setPlaceholderText("username")
+        self._password.setPlaceholderText("••••••••")
+
         form.addRow("Host:",     self._host)
         form.addRow("Port:",     self._port)
         form.addRow("Database:", self._database)
         form.addRow("Username:", self._user)
         form.addRow("Password:", self._password)
         form.addRow("SSL mode:", self._ssl_mode)
-        root.addWidget(fields_box)
+        inner.addWidget(fields_box)
 
         # Buttons
         btn_row = QHBoxLayout()
-        test_btn = QPushButton("Test Connection")
+        btn_row.setSpacing(8)
+
+        test_btn = QPushButton("⚡  Test Connection")
+        test_btn.setToolTip("Verify the connection parameters without saving")
+        test_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #006270, stop:1 #004d57);
+                border: 1px solid #008899;
+                border-radius: 4px; padding: 6px 18px;
+                color: #80deea; font-weight: 600; font-size: 12px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #007a8a, stop:1 #006270);
+                color: #e0f7fa; border-color: #00acc1;
+            }
+            QPushButton:pressed { background: #004d57; }
+        """)
         test_btn.clicked.connect(self._on_test)
         btn_row.addWidget(test_btn)
         btn_row.addStretch()
@@ -143,8 +248,29 @@ class ConnectionDialog(QDialog):
         )
         std.accepted.connect(self._on_ok)
         std.rejected.connect(self.reject)
+
+        ok_btn = std.button(QDialogButtonBox.StandardButton.Ok)
+        ok_btn.setText("Connect")
+        ok_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #1976D2, stop:1 #1565C0);
+                border: 1px solid #1E88E5;
+                border-radius: 4px; padding: 6px 22px;
+                color: #fff; font-weight: 600; font-size: 12px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
+                    stop:0 #1E88E5, stop:1 #1976D2);
+            }
+            QPushButton:pressed { background: #1565C0; }
+            QPushButton:disabled { background: #1a2a3a; color: #4a6a8a; border-color: #2a3a4a; }
+        """)
+
         btn_row.addWidget(std)
-        root.addLayout(btn_row)
+        inner.addLayout(btn_row)
+
+        root.addLayout(inner)
 
     # ── Recent connections ────────────────────────────────────────────── #
 
@@ -203,15 +329,15 @@ class ConnectionDialog(QDialog):
                 sslmode=self._ssl_mode.currentText(),
             )
             conn.close()
-            QMessageBox.information(self, "Test Connection", "Connection successful!")
+            StyledMessageBox.information(self, "Test Connection", "Connection successful!")
         except Exception as exc:
-            QMessageBox.critical(self, "Test Connection", f"Connection failed:\n\n{exc}")
+            StyledMessageBox.critical(self, "Test Connection", f"Connection failed:\n\n{exc}")
 
     def _on_ok(self) -> None:
         for field, name in [(self._host, "Host"), (self._database, "Database"),
                             (self._user, "Username")]:
             if not field.text().strip():
-                QMessageBox.warning(self, "Missing field", f"{name} is required.")
+                StyledMessageBox.warning(self, "Missing field", f"{name} is required.")
                 return
         self._save_recent()
         self.accept()

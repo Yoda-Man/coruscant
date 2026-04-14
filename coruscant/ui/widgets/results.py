@@ -19,8 +19,9 @@ import json
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QTableWidget, QTableWidgetItem, QAbstractItemView,
-    QHeaderView, QPlainTextEdit, QFileDialog, QMessageBox,
+    QHeaderView, QPlainTextEdit, QFileDialog,
 )
+from coruscant.ui.dialogs.message import StyledMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QGuiApplication
 
@@ -248,9 +249,9 @@ class ResultGrid(QWidget):
                     ["" if v is None else v for v in row]
                     for row in self._all_rows
                 )
-            QMessageBox.information(self, "Export", f"Saved to:\n{path}")
+            StyledMessageBox.information(self, "Export", f"Saved to:\n{path}")
         except OSError as exc:
-            QMessageBox.critical(self, "Export Error", str(exc))
+            StyledMessageBox.critical(self, "Export Error", str(exc))
 
     def _export_json(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -262,9 +263,9 @@ class ResultGrid(QWidget):
             records = [dict(zip(self._columns, row)) for row in self._all_rows]
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(records, fh, indent=2, default=json_default)
-            QMessageBox.information(self, "Export", f"Saved to:\n{path}")
+            StyledMessageBox.information(self, "Export", f"Saved to:\n{path}")
         except OSError as exc:
-            QMessageBox.critical(self, "Export Error", str(exc))
+            StyledMessageBox.critical(self, "Export Error", str(exc))
 
 
 # ═══════════════════════════════════════════════════════════════════════ #
@@ -316,7 +317,7 @@ class ErrorResult(QWidget):
     """
     Inline error display shown as a result tab.
 
-    Replaces blocking QMessageBox.critical so the user can keep working
+    Replaces blocking StyledMessageBox.critical so the user can keep working
     and refer back to the error without re-running.
     """
 

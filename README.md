@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 0.9.2
+**Version:** 0.9.3
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -170,7 +170,7 @@ Coruscant uses [PyInstaller](https://pyinstaller.org) to produce self-contained 
 Pushing a version tag triggers the `.github/workflows/release.yml` workflow, which builds all three platforms in parallel and publishes a GitHub Release with the artifacts attached.
 
 ```bash
-git tag v0.9.2
+git tag v0.9.3
 git push --tags
 ```
 
@@ -250,7 +250,8 @@ coruscant/
 │   │   ├── results.py   # ResultGrid, MessageResult, ExplainResult, ErrorResult
 │   │   └── tab_bar.py   # PinnableTabBar
 │   ├── dialogs/
-│   │   └── connection.py  # ConnectionDialog
+│   │   ├── connection.py  # ConnectionDialog
+│   │   └── message.py     # StyledMessageBox — premium branded dialogs
 │   └── panels/
 │       ├── schema.py    # SchemaBrowser + _SchemaWorker (context menu script generator)
 │       └── history.py   # HistoryPanel
@@ -582,6 +583,11 @@ Unhandled exceptions are caught by a custom `sys.excepthook`, logged with a full
 ---
 
 ## Changelog
+
+### 0.9.3
+- **Premium message dialogs** — all `QMessageBox` calls replaced with `StyledMessageBox`: each dialog shows the Coruscant banner image, a colour-coded header strip (green / amber / red for info / warning / error), and a dark-themed body with selectable text.
+- **Connection dialog — banner enlarged** — banner image scaled to 130 px height with aspect-ratio-preserving smooth scaling; subtitle text removed (redundant with banner artwork).
+- **Toolbar Connect / Disconnect toggle** — the two buttons now swap visibility on connection state change so only the relevant action occupies toolbar space, giving all other buttons room to show their full labels.
 
 ### 0.9.2
 - Documentation cleanup and repository hygiene improvements.

@@ -17,6 +17,7 @@ Author: Marwa Trust Mutemasango
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -26,7 +27,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QFont
 
-_BANNER_PATH = str(Path(__file__).resolve().parents[3] / "docs" / "coruscant3.png")
+_BASE = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[3]
+_BANNER_PATH = str(_BASE / "docs" / "coruscant3.png")
 
 # Severity constants
 _INFO     = "info"

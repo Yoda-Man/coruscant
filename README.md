@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 0.9.3
+**Version:** 0.9.4
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -170,7 +170,7 @@ Coruscant uses [PyInstaller](https://pyinstaller.org) to produce self-contained 
 Pushing a version tag triggers the `.github/workflows/release.yml` workflow, which builds all three platforms in parallel and publishes a GitHub Release with the artifacts attached.
 
 ```bash
-git tag v0.9.3
+git tag v0.9.4
 git push --tags
 ```
 
@@ -583,6 +583,9 @@ Unhandled exceptions are caught by a custom `sys.excepthook`, logged with a full
 ---
 
 ## Changelog
+
+### 0.9.4
+- **Banner image bundled in executable** — `coruscant3.png` is now included in the PyInstaller build via `datas`; both dialogs resolve the path via `sys._MEIPASS` when frozen so the banner always displays in distribution builds.
 
 ### 0.9.3
 - **Premium message dialogs** — all `QMessageBox` calls replaced with `StyledMessageBox`: each dialog shows the Coruscant banner image, a colour-coded header strip (green / amber / red for info / warning / error), and a dark-themed body with selectable text.

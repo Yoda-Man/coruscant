@@ -15,7 +15,7 @@ a = Analysis(
     [os.path.join(project_root, 'main.py')],
     pathex=[project_root],
     binaries=[],
-    datas=[],
+    datas=[(os.path.join(project_root, 'docs', 'coruscant3.png'), 'docs')],
     hiddenimports=[
         'psycopg2',
         'psycopg2._psycopg',
@@ -68,8 +68,8 @@ if sys.platform == 'darwin':
         info_plist={
             'CFBundleName':             'Coruscant',
             'CFBundleDisplayName':      'Coruscant',
-            'CFBundleShortVersionString': '0.9.2',
-            'CFBundleVersion':          '0.9.2',
+            'CFBundleShortVersionString': '0.9.4',
+            'CFBundleVersion':          '0.9.4',
             'NSHighResolutionCapable':  True,
             'NSPrincipalClass':         'NSApplication',
             'NSRequiresAquaSystemAppearance': False,

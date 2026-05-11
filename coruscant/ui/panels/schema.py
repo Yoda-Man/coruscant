@@ -46,6 +46,7 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QTreeWidget, QTreeWidgetItem, QStackedWidget, QMenu,
+    QHeaderView,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 
@@ -113,8 +114,10 @@ class SchemaBrowser(QWidget):
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
         self._tree.setColumnCount(2)
-        self._tree.setColumnWidth(0, 160)
-        self._tree.header().setStretchLastSection(True)
+        self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._tree.header().setStretchLastSection(False)
+        self._tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._tree.itemDoubleClicked.connect(self._on_double_click)
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._on_context_menu)

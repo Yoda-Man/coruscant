@@ -19,11 +19,11 @@ import json
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QTableWidget, QTableWidgetItem, QAbstractItemView,
-    QHeaderView, QPlainTextEdit, QFileDialog,
+    QHeaderView, QPlainTextEdit, QFileDialog, QMenu,
 )
 from coruscant.ui.dialogs.message import StyledMessageBox
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtGui import QFont, QGuiApplication, QAction
 
 from coruscant.utils.serializers import json_default
 
@@ -33,16 +33,56 @@ from coruscant.utils.serializers import json_default
 # ═══════════════════════════════════════════════════════════════════════ #
 
 class _CopyableTable(QTableWidget):
-    """QTableWidget where Ctrl+C copies selected rows as TSV."""
+    """
+    QTableWidget with keyboard and context-menu copy support.
+
+    Shortcuts
+    ---------
+    Ctrl+C         — copy selected rows (data only, no headers)
+    Ctrl+Shift+C   — copy selected rows with column headers
+
+    Right-click
+    -----------
+    Context menu exposes both options explicitly.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.itemDoubleClicked.connect(self._on_item_double_clicked)
+
+    def _on_item_double_clicked(self, item: QTableWidgetItem) -> None:
+        if not item:
+            return
+        from coruscant.ui.dialogs.cell_viewer import CellViewerDialog
+        dialog = CellViewerDialog(item.text(), parent=self)
+        dialog.exec()
 
     def keyPressEvent(self, event) -> None:
-        if (event.key() == Qt.Key.Key_C
-                and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
-            self._copy_to_clipboard()
-            return
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if event.key() == Qt.Key.Key_C:
+                include = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                self._copy_to_clipboard(include_headers=include)
+                return
         super().keyPressEvent(event)
 
-    def _copy_to_clipboard(self) -> None:
+    def contextMenuEvent(self, event) -> None:
+        if not self.selectedRanges():
+            return
+        menu = QMenu(self)
+
+        act_data = QAction("Copy", self)
+        act_data.setStatusTip("Copy selected rows without column headers  (Ctrl+C)")
+        act_data.triggered.connect(lambda: self._copy_to_clipboard(include_headers=False))
+        menu.addAction(act_data)
+
+        act_hdrs = QAction("Copy with Headers", self)
+        act_hdrs.setStatusTip("Copy selected rows including column headers  (Ctrl+Shift+C)")
+        act_hdrs.triggered.connect(lambda: self._copy_to_clipboard(include_headers=True))
+        menu.addAction(act_hdrs)
+
+        menu.exec(event.globalPos())
+
+    def _copy_to_clipboard(self, include_headers: bool = False) -> None:
         selected: set[int] = set()
         for rng in self.selectedRanges():
             for r in range(rng.topRow(), rng.bottomRow() + 1):
@@ -52,15 +92,20 @@ class _CopyableTable(QTableWidget):
             return
 
         cols  = self.columnCount()
-        lines = ["\t".join(
-            self.horizontalHeaderItem(c).text() if self.horizontalHeaderItem(c) else ""
-            for c in range(cols)
-        )]
+        lines = []
+
+        if include_headers:
+            lines.append("\t".join(
+                self.horizontalHeaderItem(c).text() if self.horizontalHeaderItem(c) else ""
+                for c in range(cols)
+            ))
+
         for row in sorted(selected):
             lines.append("\t".join(
                 (self.item(row, c).text() if self.item(row, c) else "")
                 for c in range(cols)
             ))
+
         QGuiApplication.clipboard().setText("\n".join(lines))
 
 

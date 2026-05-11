@@ -3,7 +3,7 @@ import coruscant
 
 
 def test_version():
-    assert coruscant.__version__ == "0.9.4"
+    assert coruscant.__version__ == "0.9.5"
 
 
 def test_author():

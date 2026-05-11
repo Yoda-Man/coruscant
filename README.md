@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 0.9.4
+**Version:** 0.9.5
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -169,10 +169,10 @@ Coruscant uses [PyInstaller](https://pyinstaller.org) to produce self-contained 
 
 Pushing a version tag triggers the `.github/workflows/release.yml` workflow, which builds all three platforms in parallel and publishes a GitHub Release with the artifacts attached.
 
-```bash
-git tag v0.9.4
-git push --tags
-```
+1. Ensure `__version__` in `coruscant/__init__.py` is updated.
+2. Commit and push changes.
+3. Create a git tag: `git tag v0.9.5`
+4. Push tag: `git push --tags`
 
 The workflow can also be triggered manually from the **Actions** tab in GitHub without a tag (useful for testing builds). When triggered without a tag the artifacts are uploaded but no release is created.
 
@@ -584,39 +584,4 @@ Unhandled exceptions are caught by a custom `sys.excepthook`, logged with a full
 
 ## Changelog
 
-### 0.9.4
-- **Banner image bundled in executable** — `coruscant3.png` is now included in the PyInstaller build via `datas`; both dialogs resolve the path via `sys._MEIPASS` when frozen so the banner always displays in distribution builds.
-
-### 0.9.3
-- **Premium message dialogs** — all `QMessageBox` calls replaced with `StyledMessageBox`: each dialog shows the Coruscant banner image, a colour-coded header strip (green / amber / red for info / warning / error), and a dark-themed body with selectable text.
-- **Connection dialog — banner enlarged** — banner image scaled to 130 px height with aspect-ratio-preserving smooth scaling; subtitle text removed (redundant with banner artwork).
-- **Toolbar Connect / Disconnect toggle** — the two buttons now swap visibility on connection state change so only the relevant action occupies toolbar space, giving all other buttons room to show their full labels.
-
-### 0.9.2
-- Documentation cleanup and repository hygiene improvements.
-
-### 0.9.1
-- **Structured logging** — rotating log file written on every run (`logging_config.py`).
-  Level controlled by `CORUSCANT_LOG_LEVEL` env var; default `INFO`, set `DEBUG` for full SQL traces.
-- **Crash handler** — `sys.excepthook` logs unhandled exceptions with full tracebacks and shows a user-facing dialog with the log file path.
-- **Qt message routing** — Qt's internal warnings and errors are now captured via `qInstallMessageHandler` and written to the log under the `Qt` logger.
-- **Startup environment snapshot** — each session logs Python, PySide6, Qt, and OS version at `INFO`.
-- **Window geometry persistence** — window size, position, dock layout, and both splitter positions are saved to QSettings on close and restored on next launch.
-- **Graceful shutdown** — `closeEvent` logs the shutdown, saves geometry, and disconnects cleanly from the database.
-- **Schema browser context menu** — right-click any table to generate a ready-to-edit SELECT, UPDATE, or DELETE script populated with the table's actual column names.
-- **Dark mode arrow fix** — QSpinBox and QComboBox up/down/drop-down arrows are now visible in dark mode using CSS triangle rendering.
-
-### 0.9.0  *(initial public release)*
-- Renamed from DBClient → **Coruscant**
-- Clean layered architecture: `core/`, `ui/`, `utils/` packages
-- Cancel query (⏹ / Escape) works during both Execute and EXPLAIN
-- Cancelled queries show a status bar message with no error dialog
-- Transaction mode: Auto-commit toggle + Commit / Rollback
-- SSL mode selector in connection dialog
-- Passwords base64-encoded in QSettings (no more plaintext)
-- Expanded schema browser: indexes, foreign keys, functions/procedures
-- Result filter uses `setRowHidden` (O(n), no widget reconstruction)
-- Errors shown as inline **ErrorResult** tabs with no blocking modals
-- Dropped connections detected after query errors
-- Keyboard shortcuts: Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab
-- Author: Marwa Trust Mutemasango
+Please see the [change.md](change.md) file for the full version history and release notes.

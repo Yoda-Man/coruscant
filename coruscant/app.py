@@ -24,6 +24,8 @@ import PySide6
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QSettings, qVersion
 from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+from PySide6.QtGui import QIcon
+from pathlib import Path
 
 from coruscant import __version__, __app_name__
 import coruscant.utils.themes as themes
@@ -56,6 +58,11 @@ def create_app() -> QApplication:
     app.setStyle("Fusion")
 
     qInstallMessageHandler(_qt_message_handler)
+    
+    # ── Application Icon ─────────────────────────────────────────── #
+    _BASE = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
+    _ICON_PATH = str(_BASE / "docs" / "icon.png")
+    app.setWindowIcon(QIcon(_ICON_PATH))
 
     settings    = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
     saved_theme = themes.current_theme(settings)

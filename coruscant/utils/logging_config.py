@@ -123,15 +123,20 @@ def _install_excepthook(log_file: Path) -> None:
         # Show a dialog when Qt is already running so the user is not left
         # wondering why the window disappeared.
         try:
-            from PySide6.QtWidgets import QApplication, QMessageBox
+            from PySide6.QtWidgets import QApplication
+            from coruscant.ui.dialogs.message import StyledMessageBox
+            import traceback
+
             if QApplication.instance():
-                QMessageBox.critical(
-                    None,
-                    "Unexpected Error",
-                    f"An unexpected error occurred and Coruscant must close.\n\n"
-                    f"{exc_type.__name__}: {exc_value}\n\n"
-                    f"Details have been saved to:\n{log_file}",
+                tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+                body   = (
+                    f"An unexpected error occurred and Coruscant must close.<br><br>"
+                    f"<b>{exc_type.__name__}:</b> {exc_value}<br><br>"
+                    f"Details have been saved to:<br/><code>{log_file}</code><br><br>"
+                    f"<b>Traceback:</b><br/>"
+                    f"<pre style='font-family: monospace; font-size: 11px;'>{tb_str}</pre>"
                 )
+                StyledMessageBox.critical(None, "Unexpected Error", body)
         except Exception:
             pass  # never let the crash handler itself crash
 

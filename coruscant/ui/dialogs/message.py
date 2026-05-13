@@ -34,6 +34,7 @@ _BANNER_PATH = str(_BASE / "docs" / "coruscant3.png")
 _INFO     = "info"
 _WARNING  = "warning"
 _CRITICAL = "critical"
+_QUESTION = "question"
 
 _SEVERITY_META = {
     _INFO:     {"icon": "✔", "label": "Information",
@@ -45,6 +46,9 @@ _SEVERITY_META = {
     _CRITICAL: {"icon": "✕", "label": "Error",
                 "strip_bg": "#2a0a0a", "strip_border": "#C62828",
                 "icon_color": "#EF5350", "title_color": "#FFCDD2"},
+    _QUESTION: {"icon": "❓", "label": "Question",
+                "strip_bg": "#0a1a2a", "strip_border": "#1976D2",
+                "icon_color": "#64B5F6", "title_color": "#BBDEFB"},
 }
 
 _DIALOG_STYLE = """
@@ -64,27 +68,31 @@ _DIALOG_STYLE = """
         line-height: 1.5;
         background: transparent;
     }
-    QPushButton#ok_btn {
+    QPushButton#ok_btn, QPushButton#cancel_btn {
         background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
             stop:0 #3c3c52, stop:1 #2e2e42);
         border: 1px solid #555570;
         border-radius: 5px;
-        padding: 7px 32px;
+        padding: 7px 24px;
         color: #ddd;
         font-size: 12px;
         font-weight: 600;
         min-width: 80px;
     }
-    QPushButton#ok_btn:hover {
+    QPushButton#ok_btn:hover, QPushButton#cancel_btn:hover {
         background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
             stop:0 #4a4a62, stop:1 #3c3c52);
         border-color: #7070a0;
         color: #fff;
     }
-    QPushButton#ok_btn:pressed {
+    QPushButton#ok_btn:pressed, QPushButton#cancel_btn:pressed {
         background: #4361ee;
         border-color: #4361ee;
         color: #fff;
+    }
+    QPushButton#cancel_btn {
+        background: transparent;
+        border: 1px solid #444;
     }
 """
 
@@ -99,7 +107,8 @@ class StyledMessageBox(QDialog):
         StyledMessageBox.critical(parent, title, text)
     """
 
-    def __init__(self, parent, title: str, text: str, severity: str) -> None:
+    def __init__(self, parent, title: str, text: str, severity: str,
+                 buttons: list[tuple[str, bool]] | None = None) -> None:
         super().__init__(parent)
         meta = _SEVERITY_META.get(severity, _SEVERITY_META[_INFO])
 
@@ -175,7 +184,7 @@ class StyledMessageBox(QDialog):
         scroll.setWidget(body_widget)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setMaximumHeight(220)
+        scroll.setMaximumHeight(400 if severity == _CRITICAL else 220)
         root.addWidget(scroll)
 
         # ── Divider ───────────────────────────────────────────────────── #
@@ -191,12 +200,29 @@ class StyledMessageBox(QDialog):
         footer_layout.setContentsMargins(16, 10, 16, 12)
         footer_layout.addStretch()
 
-        ok_btn = QPushButton("OK")
-        ok_btn.setObjectName("ok_btn")
-        ok_btn.setDefault(True)
-        ok_btn.clicked.connect(self.accept)
-        footer_layout.addWidget(ok_btn)
+        if buttons:
+            for label, is_default in buttons:
+                btn = QPushButton(label)
+                btn.setObjectName("ok_btn" if is_default else "cancel_btn")
+                if is_default:
+                    btn.setDefault(True)
+                btn.clicked.connect(lambda checked=False, l=label: self._on_btn_clicked(l))
+                footer_layout.addWidget(btn)
+        else:
+            ok_btn = QPushButton("OK")
+            ok_btn.setObjectName("ok_btn")
+            ok_btn.setDefault(True)
+            ok_btn.clicked.connect(self.accept)
+            footer_layout.addWidget(ok_btn)
+
         root.addWidget(footer)
+
+    def _on_btn_clicked(self, label: str) -> None:
+        self.setProperty("clicked_button", label)
+        if label.lower() in ("ok", "yes"):
+            self.accept()
+        else:
+            self.reject()
 
     # ── Static convenience methods (QMessageBox drop-in) ─────────────── #
 
@@ -211,3 +237,10 @@ class StyledMessageBox(QDialog):
     @staticmethod
     def critical(parent, title: str, text: str) -> None:
         StyledMessageBox(parent, title, text, _CRITICAL).exec()
+
+    @staticmethod
+    def question(parent, title: str, text: str) -> bool:
+        """Returns True if Yes is clicked, False otherwise."""
+        buttons = [("No", False), ("Yes", True)]
+        dlg = StyledMessageBox(parent, title, text, _QUESTION, buttons=buttons)
+        return dlg.exec() == QDialog.DialogCode.Accepted

@@ -267,10 +267,10 @@ class MainWindow(QMainWindow):
         self._editor_tabs.tabCloseRequested.connect(self._close_editor_tab)
         self._editor_tabs.currentChanged.connect(self._on_editor_tab_changed)
         self._central_splitter.addWidget(self._editor_tabs)
-        self._add_editor_tab()
-
         self._result_stack = QStackedWidget()
         self._central_splitter.addWidget(self._result_stack)
+
+        self._add_editor_tab()
 
         self._central_splitter.setSizes([350, 450])
         layout.addWidget(self._central_splitter)

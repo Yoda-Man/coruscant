@@ -756,7 +756,7 @@ CORUSCANT_LOG_LEVEL=DEBUG python main.py
 If Coruscant encounters an unexpected error that it cannot handle, it will:
 
 1. Write a `CRITICAL` log entry with the full error traceback.
-2. Show a dialog telling you what went wrong and the exact path to the log file.
+2. Show a branded error dialog containing the error type, message, a detailed stack traceback for immediate inspection, and the path to the full log file.
 
 The log file is the first place to look when something goes wrong.
 

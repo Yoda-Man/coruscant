@@ -3,6 +3,8 @@
 ### 0.9.6
 - **Connection Removal** — users can now delete individual saved connections from the connection dialog by clicking the 🗑 button.
 - **Independent Result Tabs** — each editor tab now maintains its own set of result tabs; running a query in one tab no longer clears results from other tabs.
+- **Premium Crash Handler** — unhandled exceptions now trigger a branded, dark-themed dialog (StyledMessageBox) with a detailed, monospace traceback for easier troubleshooting.
+- **Custom App Icon** — replaced the generic Python icon with a custom sci-fi inspired emblem for the window, taskbar, and executable.
 - **Version Update** — bumped application version to 0.9.6 across all components and documentation.
 
 

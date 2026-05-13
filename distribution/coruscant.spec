@@ -15,7 +15,10 @@ a = Analysis(
     [os.path.join(project_root, 'main.py')],
     pathex=[project_root],
     binaries=[],
-    datas=[(os.path.join(project_root, 'docs', 'coruscant3.png'), 'docs')],
+    datas=[
+        (os.path.join(project_root, 'docs', 'coruscant3.png'), 'docs'),
+        (os.path.join(project_root, 'docs', 'icon.png'), 'docs'),
+    ],
     hiddenimports=[
         'psycopg2',
         'psycopg2._psycopg',
@@ -86,6 +89,7 @@ else:
         a.datas,
         [],
         name='Coruscant',
+        icon=os.path.join(project_root, 'docs', 'icon.ico'),
         debug=False,
         bootloader_ignore_signals=False,
         strip=False,

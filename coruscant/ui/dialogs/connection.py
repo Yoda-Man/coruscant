@@ -343,7 +343,7 @@ class ConnectionDialog(QDialog):
             self, "Remove Connection",
             "Are you sure you want to remove this connection from your history?",
         )
-        if res != StyledMessageBox.StandardButton.Yes:
+        if not res:
             return
 
         raw = self._settings.value(_RECENT_KEY, [])

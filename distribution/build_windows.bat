@@ -24,7 +24,7 @@ pip install pyinstaller --quiet
 echo  Building...
 echo.
 
-pyinstaller distribution\coruscant.spec ^
+python -m PyInstaller distribution\coruscant.spec ^
     --distpath distribution\dist ^
     --workpath distribution\.build ^
     --noconfirm

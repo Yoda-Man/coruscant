@@ -26,7 +26,7 @@ import logging
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget, QSplitter,
     QLabel, QToolBar, QFileDialog, QSpinBox,
-    QDockWidget, QApplication, QSizePolicy,
+    QDockWidget, QApplication, QSizePolicy, QStackedWidget,
 )
 from coruscant.ui.dialogs.message import StyledMessageBox
 from PySide6.QtCore import Qt, QSize, QSettings
@@ -265,27 +265,13 @@ class MainWindow(QMainWindow):
         self._editor_tabs.setTabsClosable(True)
         self._editor_tabs.setMovable(True)
         self._editor_tabs.tabCloseRequested.connect(self._close_editor_tab)
+        self._editor_tabs.currentChanged.connect(self._on_editor_tab_changed)
         self._central_splitter.addWidget(self._editor_tabs)
         self._add_editor_tab()
 
-        # Result area
-        result_area = QWidget()
-        rl = QVBoxLayout(result_area)
-        rl.setContentsMargins(0, 0, 0, 0)
+        self._result_stack = QStackedWidget()
+        self._central_splitter.addWidget(self._result_stack)
 
-        self._placeholder = QLabel("Results will appear here after executing a query.")
-        self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._placeholder.setStyleSheet("color: #555; font-size: 13px; padding: 40px;")
-        rl.addWidget(self._placeholder)
-
-        self._result_tabs = QTabWidget()
-        self._result_tabs.setTabBar(PinnableTabBar())
-        self._result_tabs.setTabsClosable(True)
-        self._result_tabs.tabCloseRequested.connect(self._close_result_tab)
-        self._result_tabs.hide()
-        rl.addWidget(self._result_tabs)
-
-        self._central_splitter.addWidget(result_area)
         self._central_splitter.setSizes([350, 450])
         layout.addWidget(self._central_splitter)
         self.setCentralWidget(central)
@@ -333,21 +319,74 @@ class MainWindow(QMainWindow):
         tab = EditorTab()
         if sql:
             tab.set_sql(sql)
+
+        # Create result area for this tab
+        area, placeholder, res_tabs = self._create_result_area()
+        tab.setProperty("result_area", area)
+        tab.setProperty("result_placeholder", placeholder)
+        tab.setProperty("result_tabs", res_tabs)
+        self._result_stack.addWidget(area)
+
         idx = self._editor_tabs.addTab(tab, f"Query {self._tab_counter}")
         self._editor_tabs.setCurrentIndex(idx)
         tab.editor.setFocus()
         return tab
+
+    def _create_result_area(self) -> tuple[QWidget, QLabel, QTabWidget]:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        placeholder = QLabel("Results will appear here after executing a query.")
+        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        placeholder.setStyleSheet("color: #555; font-size: 13px; padding: 40px;")
+        layout.addWidget(placeholder)
+
+        tabs = QTabWidget()
+        tabs.setProperty("associated_placeholder", placeholder)
+        tabs.setTabBar(PinnableTabBar())
+        tabs.setTabsClosable(True)
+        tabs.tabCloseRequested.connect(self._close_result_tab)
+        tabs.hide()
+        layout.addWidget(tabs)
+
+        return container, placeholder, tabs
+
+    def _on_editor_tab_changed(self, index: int) -> None:
+        tab = self._editor_tabs.widget(index)
+        if tab:
+            area = tab.property("result_area")
+            if area:
+                self._result_stack.setCurrentWidget(area)
+
+    def _current_result_widgets(self) -> tuple[QLabel, QTabWidget] | tuple[None, None]:
+        tab = self._current_editor_tab()
+        if not tab:
+            return None, None
+        return (tab.property("result_placeholder"),
+                tab.property("result_tabs"))
 
     def _current_editor_tab(self) -> EditorTab | None:
         return self._editor_tabs.currentWidget()  # type: ignore[return-value]
 
     def _close_editor_tab(self, index: int) -> None:
         if self._editor_tabs.count() > 1:
+            area = self._result_stack.widget(index)
+            self._result_stack.removeWidget(area)
+            if area:
+                area.deleteLater()
             self._editor_tabs.removeTab(index)
         else:
             tab = self._editor_tabs.widget(index)
             if isinstance(tab, EditorTab):
                 tab.editor.clear()
+                # Also clear results for the last tab
+                placeholder, tabs = self._current_result_widgets()
+                if tabs and placeholder:
+                    while tabs.count() > 0:
+                        tabs.removeTab(0)
+                    tabs.hide()
+                    placeholder.show()
 
     def _close_current_editor_tab(self) -> None:
         idx = self._editor_tabs.currentIndex()
@@ -372,33 +411,53 @@ class MainWindow(QMainWindow):
     #  Result tab management                                               #
     # ================================================================== #
 
-    def _tab_bar(self) -> PinnableTabBar:
-        return self._result_tabs.tabBar()  # type: ignore[return-value]
+    def _tab_bar(self) -> PinnableTabBar | None:
+        _, tabs = self._current_result_widgets()
+        return tabs.tabBar() if tabs else None  # type: ignore[return-value]
 
     def _add_result_tab(self, widget: QWidget, title: str) -> int:
-        idx = self._result_tabs.addTab(widget, title)
-        self._tab_bar().on_tab_added(idx)
+        _, tabs = self._current_result_widgets()
+        if not tabs:
+            return -1
+        idx = tabs.addTab(widget, title)
+        tabs.tabBar().on_tab_added(idx)  # type: ignore[attr-defined]
         return idx
 
     def _close_result_tab(self, index: int) -> None:
-        self._tab_bar().on_tab_removed(index)
-        self._result_tabs.removeTab(index)
-        if self._result_tabs.count() == 0:
-            self._result_tabs.hide()
-            self._placeholder.show()
+        tabs = self.sender()
+        if not isinstance(tabs, QTabWidget):
+            _, tabs = self._current_result_widgets()
+        if not tabs:
+            return
+
+        placeholder = tabs.property("associated_placeholder")
+        
+        tabs.tabBar().on_tab_removed(index)  # type: ignore[attr-defined]
+        tabs.removeTab(index)
+        if tabs.count() == 0:
+            tabs.hide()
+            if placeholder:
+                placeholder.show()
 
     def _clear_unpinned_result_tabs(self) -> None:
+        _, tabs = self._current_result_widgets()
+        if not tabs:
+            return
+        bar = tabs.tabBar()
         i = 0
-        while i < self._result_tabs.count():
-            if self._tab_bar().is_pinned(i):
+        while i < tabs.count():
+            if bar.is_pinned(i):  # type: ignore[attr-defined]
                 i += 1
             else:
-                self._tab_bar().on_tab_removed(i)
-                self._result_tabs.removeTab(i)
+                bar.on_tab_removed(i)  # type: ignore[attr-defined]
+                tabs.removeTab(i)
 
     def _show_result_area(self) -> None:
-        self._placeholder.hide()
-        self._result_tabs.show()
+        placeholder, tabs = self._current_result_widgets()
+        if placeholder:
+            placeholder.hide()
+        if tabs:
+            tabs.show()
 
     # ================================================================== #
     #  UI state                                                            #
@@ -481,9 +540,12 @@ class MainWindow(QMainWindow):
             return
 
         self._clear_unpinned_result_tabs()
-        if self._result_tabs.count() == 0:
-            self._placeholder.show()
-            self._result_tabs.hide()
+        _, tabs = self._current_result_widgets()
+        placeholder, _ = self._current_result_widgets()
+        if tabs and tabs.count() == 0:
+            if placeholder:
+                placeholder.show()
+            tabs.hide()
 
         self.statusBar().showMessage(
             "Executing selection…" if tab.has_selection() else "Executing…"
@@ -687,8 +749,9 @@ class MainWindow(QMainWindow):
                 title = f"{item.label}  ({elapsed_ms:.0f} ms)"
                 self._add_result_tab(msg, title)
 
-        if self._result_tabs.count() > 0:
-            self._result_tabs.setCurrentIndex(0)
+        _, tabs = self._current_result_widgets()
+        if tabs and tabs.count() > 0:
+            tabs.setCurrentIndex(0)
 
         # Add to history
         tab = self._current_editor_tab()
@@ -709,7 +772,9 @@ class MainWindow(QMainWindow):
                 plan_text = "\n".join(str(row[0]) for row in item.rows)
                 self._show_result_area()
                 idx = self._add_result_tab(ExplainResult(plan_text, title), title)
-                self._result_tabs.setCurrentIndex(idx)
+                _, tabs = self._current_result_widgets()
+                if tabs:
+                    tabs.setCurrentIndex(idx)
                 self.statusBar().showMessage("EXPLAIN complete.")
                 return
 
@@ -717,7 +782,9 @@ class MainWindow(QMainWindow):
         """Show the error inline as a result tab — no blocking modal."""
         self._show_result_area()
         idx = self._add_result_tab(ErrorResult(message), "⚠ Error")
-        self._result_tabs.setCurrentIndex(idx)
+        _, tabs = self._current_result_widgets()
+        if tabs:
+            tabs.setCurrentIndex(idx)
         self.statusBar().showMessage("Query failed — see Error tab.")
         self._update_ui_state()
 

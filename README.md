@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 0.9.5
+**Version:** 0.9.6
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -304,7 +304,7 @@ Click **Connect** to open the connection dialog.
 **Test Connection** verifies credentials with a short-lived throwaway
 connection without affecting the current session.
 
-Up to **5 recent connections** are saved (passwords base64-encoded).
+Up to **5 recent connections** are saved (passwords base64-encoded). Use the **🗑** button to remove a saved connection from your history.
 
 ---
 
@@ -322,6 +322,8 @@ Each editor tab contains:
 | Cycle tabs | **Ctrl+Tab** / **Ctrl+Shift+Tab** |
 | Close tab | **Ctrl+W** or the × on the tab |
 | Reorder | Drag tabs |
+
+Each editor tab maintains its own **independent set of result tabs**. Running a query in one tab will not clear or affect the results already displayed for another tab.
 
 ### Format SQL
 

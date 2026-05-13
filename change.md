@@ -1,5 +1,11 @@
 # Changelog
 
+### 0.9.6
+- **Connection Removal** — users can now delete individual saved connections from the connection dialog by clicking the 🗑 button.
+- **Independent Result Tabs** — each editor tab now maintains its own set of result tabs; running a query in one tab no longer clears results from other tabs.
+- **Version Update** — bumped application version to 0.9.6 across all components and documentation.
+
+
 ### 0.9.5
 - **Cell Viewer Dialog** — added ability to view and copy massive cell contents from the results panel by double-clicking.
 - **Schema Browser Layout** — fixed cut-off table names by setting the columns to resize automatically and enabling horizontal scrolling.

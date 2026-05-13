@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 0.9.5
+**Version:** 0.9.6
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -262,6 +262,9 @@ Before clicking **OK**, click **Test Connection**. Coruscant opens a short-lived
 
 The top of the connection dialog shows a drop-down of up to 5 previously used connections. Select one to auto-fill all fields. Passwords are stored in an encoded form (not plaintext) in your operating system's settings store.
 
+**Removing a connection:**
+To delete a connection from your history, select it in the drop-down and click the **🗑** (trash) button. You will be asked to confirm the removal.
+
 ### 4.6 Disconnecting
 
 Click **Disconnect** in the toolbar. Any open manual transaction will be abandoned by the server automatically.
@@ -289,6 +292,9 @@ You can have as many editor tabs open as you need. Each tab is independent.
 | Switch to previous tab | **Ctrl+Shift+Tab** |
 | Close the current tab | Click the **×** on the tab, or press **Ctrl+W** |
 | Reorder tabs | Drag a tab to a new position |
+
+**Independent Results:**
+Each editor tab maintains its own private collection of result tabs. When you switch between editor tabs, the result area at the bottom of the window automatically switches to show the results belonging to that specific tab. This allows you to work on multiple queries in parallel without them interfering with each other's results.
 
 > If you close the last remaining tab, the editor is cleared rather than the tab being removed; there is always at least one editor tab open.
 

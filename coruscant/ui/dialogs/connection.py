@@ -183,10 +183,19 @@ class ConnectionDialog(QDialog):
         recent_box = QGroupBox("Recent connections")
         rl = QHBoxLayout(recent_box)
         rl.setContentsMargins(10, 10, 10, 10)
+        rl.setSpacing(8)
+
         self._recent_combo = QComboBox()
         self._recent_combo.setPlaceholderText("Select a saved connection…")
         self._recent_combo.currentIndexChanged.connect(self._on_recent_selected)
-        rl.addWidget(self._recent_combo)
+        rl.addWidget(self._recent_combo, 1)
+
+        self._remove_btn = QPushButton("🗑")
+        self._remove_btn.setToolTip("Remove selected connection")
+        self._remove_btn.setFixedWidth(36)
+        self._remove_btn.clicked.connect(self._on_remove)
+        rl.addWidget(self._remove_btn)
+
         inner.addWidget(recent_box)
 
         # Fields
@@ -277,6 +286,7 @@ class ConnectionDialog(QDialog):
     # ── Recent connections ────────────────────────────────────────────── #
 
     def _load_recent(self) -> None:
+        self._remove_btn.setEnabled(False)
         raw = self._settings.value(_RECENT_KEY, [])
         if isinstance(raw, str):
             raw = [raw]
@@ -306,6 +316,7 @@ class ConnectionDialog(QDialog):
         self._settings.setValue(_RECENT_KEY, raw[:_MAX_RECENT])
 
     def _on_recent_selected(self, index: int) -> None:
+        self._remove_btn.setEnabled(index >= 0)
         entry = self._recent_combo.itemData(index)
         if not entry:
             return
@@ -318,6 +329,36 @@ class ConnectionDialog(QDialog):
         self._user.setText(params["user"])
         self._password.setText(params["password"])
         self._ssl_mode.setCurrentText(params.get("ssl_mode", "prefer"))
+
+    def _on_remove(self) -> None:
+        idx = self._recent_combo.currentIndex()
+        if idx < 0:
+            return
+        entry = self._recent_combo.itemData(idx)
+        if not entry:
+            return
+
+        # Confirm removal
+        res = StyledMessageBox.question(
+            self, "Remove Connection",
+            "Are you sure you want to remove this connection from your history?",
+        )
+        if res != StyledMessageBox.StandardButton.Yes:
+            return
+
+        raw = self._settings.value(_RECENT_KEY, [])
+        if isinstance(raw, str):
+            raw = [raw]
+        raw = [r for r in raw if r != entry]
+        self._settings.setValue(_RECENT_KEY, raw)
+        self._load_recent()
+
+        # Clear fields if they match the removed entry
+        self._host.clear()
+        self._database.clear()
+        self._user.clear()
+        self._password.clear()
+        self._ssl_mode.setCurrentText("prefer")
 
     # ── Handlers ─────────────────────────────────────────────────────── #
 

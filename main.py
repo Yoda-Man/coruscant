@@ -2,7 +2,7 @@
 Coruscant — PostgreSQL Multi-Query Tool
 ========================================
 Author:  Marwa Trust Mutemasango
-Version: 0.9.7
+Version: 0.9.8
 
 Usage
 -----

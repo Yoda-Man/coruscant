@@ -190,9 +190,8 @@ class ConnectionDialog(QDialog):
         self._recent_combo.currentIndexChanged.connect(self._on_recent_selected)
         rl.addWidget(self._recent_combo, 1)
 
-        self._remove_btn = QPushButton("🗑")
+        self._remove_btn = QPushButton("🗑  Delete")
         self._remove_btn.setToolTip("Remove selected connection")
-        self._remove_btn.setFixedWidth(36)
         self._remove_btn.clicked.connect(self._on_remove)
         rl.addWidget(self._remove_btn)
 

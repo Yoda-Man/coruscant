@@ -1,5 +1,10 @@
 # Changelog
 
+### 0.9.8
+- **UI Polish — Icons & Labels** — added descriptive icons to the Format (🪄), Open (📂), and Save (💾) actions in the toolbar and shortened their labels for a cleaner look.
+- **Connection Management** — the delete button in the connection dialog now includes the text label "Delete" alongside its icon (🗑) for better visibility.
+- **Version Update** — bumped application version to 0.9.8 across all components and documentation.
+
 ### 0.9.7
 - **Database Auto-reconnect** — the application now automatically detects when a connection has been lost (e.g., due to an idle timeout) and re-establishes it before executing queries or refreshing the schema.
 - **Status Indicator** — added a "Ready (Auto-reconnect)" status state in the toolbar to inform users when a connection is closed but can be seamlessly restored.

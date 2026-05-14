@@ -107,10 +107,10 @@ class MainWindow(QMainWindow):
         self._act_explain_a = action("Explain+",    "EXPLAIN ANALYZE BUFFERS")
 
         # Editor
-        self._act_format  = action("Format SQL", "Auto-format SQL (sqlparse)")
+        self._act_format  = action("🪄  Format", "Auto-format SQL (sqlparse)")
         self._act_clear   = action("Clear",      "Clear editor and unpinned results")
-        self._act_open    = action("Open SQL…",  "Open a .sql file")
-        self._act_save    = action("Save SQL…",  "Save editor content to a .sql file")
+        self._act_open    = action("📂  Open",   "Open a .sql file")
+        self._act_save    = action("💾  Save",   "Save editor content to a .sql file")
         self._act_new_tab = action("+ Tab",      "New editor tab  (Ctrl+T)")
 
         # Transaction

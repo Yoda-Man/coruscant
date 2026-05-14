@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 0.9.7
+**Version:** 0.9.8
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*

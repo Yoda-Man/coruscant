@@ -167,6 +167,20 @@ class DatabaseManager:
         Internal helper to check connection and attempt auto-reconnect if possible.
         Raises RuntimeError if not connected and no parameters are available.
         """
+        # If we have a connection, check if it's actually alive (zombie detection).
+        # We perform a lightweight ping to detect server-side closure (e.g. idle timeout).
+        if self._conn is not None and self._conn.closed == 0:
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                log.info("Existing connection found to be dead (zombie); resetting.")
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+                self._conn = None
+
         if self.is_connected:
             return
 

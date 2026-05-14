@@ -77,7 +77,8 @@ class _SchemaWorker(QThread):
 class SchemaBrowser(QWidget):
     """Left-dock schema tree panel."""
 
-    insert_sql: Signal = Signal(str)
+    insert_sql:    Signal = Signal(str)
+    schema_loaded: Signal = Signal(list)  # list[str] of all identifiers
 
     def __init__(self, db: DatabaseManager, parent=None) -> None:
         super().__init__(parent)
@@ -181,6 +182,8 @@ class SchemaBrowser(QWidget):
         table_count = sum(len(s.get("tables", [])) for s in tree)
         log.info("Schema loaded  schemas=%d  tables=%d", len(tree), table_count)
 
+        identifiers: set[str] = set()
+
         for schema_info in tree:
             schema_name = schema_info["schema"]
             schema_item = QTreeWidgetItem([schema_name, "schema"])
@@ -191,6 +194,9 @@ class SchemaBrowser(QWidget):
             for tbl in schema_info.get("tables", []):
                 tbl_item = self._make_table_item(schema_name, tbl)
                 schema_item.addChild(tbl_item)
+                identifiers.add(tbl["name"])
+                for col in tbl.get("columns", []):
+                    identifiers.add(col["name"])
 
             fns = schema_info.get("functions", [])
             if fns:
@@ -209,9 +215,12 @@ class SchemaBrowser(QWidget):
                     )
                     fn_item.setForeground(1, Qt.GlobalColor.gray)
                     fn_group.addChild(fn_item)
+                    identifiers.add(fn["name"])
                 schema_item.addChild(fn_group)
 
             self._tree.addTopLevelItem(schema_item)
+
+        self.schema_loaded.emit(sorted(list(identifiers)))
 
         for i in range(self._tree.topLevelItemCount()):
             item = self._tree.topLevelItem(i)
@@ -269,6 +278,11 @@ class SchemaBrowser(QWidget):
         ]:
             if grp:
                 tbl_item.addChild(grp)
+
+        # Collect identifiers for parent's list
+        # (This is a bit hacky but efficient since we're already iterating)
+        # We'll just rely on the parent _populate_tree to call this logic?
+        # Actually, let's just collect them in _populate_tree loop.
 
         return tbl_item
 

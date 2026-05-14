@@ -1,7 +1,8 @@
 # Changelog
 
 ### 0.9.8
-- **UI Polish — Icons & Labels** — added descriptive icons to the Format (🪄), Open (📂), and Save (💾) actions in the toolbar and shortened their labels for a cleaner look.
+- **SQL Autocomplete** — the editor now provides intelligent suggestions for SQL keywords, built-in functions, and database identifiers (tables, columns, functions). Suggestions appear automatically after typing two characters or manually via `Ctrl+Space`.
+- **UI Polish — Icons & Labels** — added descriptive icons to the Format (🪄), Clear (🧹), Open (📂), and Save (💾) actions in the toolbar and shortened their labels for a cleaner look.
 - **Connection Management** — the delete button in the connection dialog now includes the text label "Delete" alongside its icon (🗑) for better visibility.
 - **Version Update** — bumped application version to 0.9.8 across all components and documentation.
 

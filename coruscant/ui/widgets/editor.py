@@ -14,10 +14,12 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QPlainTextEdit, QTableWidget,
+    QCompleter, QAbstractItemView,
 )
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtCore import Qt, QStringListModel
 
-from coruscant.utils.highlighter import SQLHighlighter
+from coruscant.utils.highlighter import SQLHighlighter, KEYWORDS, FUNCTIONS
 
 
 # ═══════════════════════════════════════════════════════════════════════ #
@@ -88,6 +90,82 @@ class ParamsPanel(QWidget):
 
 
 # ═══════════════════════════════════════════════════════════════════════ #
+#  SQLEditor                                                              #
+# ═══════════════════════════════════════════════════════════════════════ #
+
+class SQLEditor(QPlainTextEdit):
+    """
+    Enhanced QPlainTextEdit with SQL autocomplete (QCompleter).
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._completer: QCompleter | None = None
+        
+        # Default word list (keywords + functions)
+        words = sorted(list(set(KEYWORDS) | set(FUNCTIONS)))
+        self.set_completer_words(words)
+
+    def set_completer_words(self, words: list[str]) -> None:
+        completer = QCompleter(words, self)
+        completer.setWidget(self)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.activated.connect(self.insert_completion)
+        self._completer = completer
+
+    def insert_completion(self, completion: str) -> None:
+        if self._completer is None:
+            return
+        tc = self.textCursor()
+        extra = len(completion) - len(self._completer.completionPrefix())
+        tc.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor, len(self._completer.completionPrefix()))
+        tc.insertText(completion)
+        self.setTextCursor(tc)
+
+    def _text_under_cursor(self) -> str:
+        tc = self.textCursor()
+        tc.select(QTextCursor.SelectionType.WordUnderCursor)
+        return tc.selectedText()
+
+    def focusInEvent(self, event) -> None:
+        if self._completer:
+            self._completer.setWidget(self)
+        super().focusInEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if self._completer and self._completer.popup().isVisible():
+            if event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return, Qt.Key.Key_Escape, Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+                event.ignore()
+                return
+
+        # Trigger completer on Ctrl+Space
+        is_shortcut = (event.modifiers() & Qt.KeyboardModifier.ControlModifier) and event.key() == Qt.Key.Key_Space
+        if not self._completer or not is_shortcut:
+            super().keyPressEvent(event)
+
+        ctrl_or_shift = event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+        if not self._completer or (ctrl_or_shift and not event.text()):
+            return
+
+        eow = "~!@#$%^&*()_+{}|:\"<>?,./;'[]\\-="  # end of word
+        has_modifier = (event.modifiers() != Qt.KeyboardModifier.NoModifier) and not ctrl_or_shift
+        completion_prefix = self._text_under_cursor()
+
+        if not is_shortcut and (has_modifier or not event.text() or len(completion_prefix) < 2 or event.text()[-1] in eow):
+            self._completer.popup().hide()
+            return
+
+        if completion_prefix != self._completer.completionPrefix():
+            self._completer.setCompletionPrefix(completion_prefix)
+            self._completer.popup().setCurrentIndex(self._completer.completionModel().index(0, 0))
+
+        cr = self.cursorRect()
+        cr.setWidth(self._completer.popup().sizeHintForColumn(0) + self._completer.popup().verticalScrollBar().sizeHint().width())
+        self._completer.complete(cr)
+
+
+# ═══════════════════════════════════════════════════════════════════════ #
 #  EditorTab                                                              #
 # ═══════════════════════════════════════════════════════════════════════ #
 
@@ -124,7 +202,7 @@ class EditorTab(QWidget):
         layout.addWidget(header)
 
         # Editor
-        self.editor = QPlainTextEdit()
+        self.editor = SQLEditor()
         self.editor.setPlaceholderText(
             "-- Enter SQL here.  Separate statements with semicolons.\n"
             "-- F5 (or ▶ Execute) runs all statements.\n\n"
@@ -165,3 +243,9 @@ class EditorTab(QWidget):
 
     def get_params(self) -> dict[str, str]:
         return self.params_panel.get_params()
+
+    def update_completer_words(self, schema_words: list[str]) -> None:
+        """Merge schema-specific identifiers with default SQL keywords."""
+        defaults = set(KEYWORDS) | set(FUNCTIONS)
+        all_words = sorted(list(defaults | set(schema_words)))
+        self.editor.set_completer_words(all_words)

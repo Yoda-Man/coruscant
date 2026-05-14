@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
         self._explain_worker: QueryWorker | None = None
         self._tab_counter:    int               = 0
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        self._schema_words:   list[str]         = []
 
         self._build_toolbar()
         self._build_left_dock()
@@ -108,7 +109,7 @@ class MainWindow(QMainWindow):
 
         # Editor
         self._act_format  = action("🪄  Format", "Auto-format SQL (sqlparse)")
-        self._act_clear   = action("Clear",      "Clear editor and unpinned results")
+        self._act_clear   = action("🧹  Clear",  "Clear editor and unpinned results")
         self._act_open    = action("📂  Open",   "Open a .sql file")
         self._act_save    = action("💾  Save",   "Save editor content to a .sql file")
         self._act_new_tab = action("+ Tab",      "New editor tab  (Ctrl+T)")
@@ -241,6 +242,7 @@ class MainWindow(QMainWindow):
 
         self._schema_browser = SchemaBrowser(self._db)
         self._schema_browser.insert_sql.connect(self._on_schema_insert_sql)
+        self._schema_browser.schema_loaded.connect(self._on_schema_loaded)
         self._left_splitter.addWidget(self._schema_browser)
 
         self._history_panel = HistoryPanel()
@@ -329,6 +331,10 @@ class MainWindow(QMainWindow):
 
         idx = self._editor_tabs.addTab(tab, f"Query {self._tab_counter}")
         self._editor_tabs.setCurrentIndex(idx)
+        
+        if self._schema_words:
+            tab.update_completer_words(self._schema_words)
+            
         tab.editor.setFocus()
         return tab
 
@@ -734,6 +740,13 @@ class MainWindow(QMainWindow):
         tab = self._current_editor_tab()
         if tab:
             tab.set_sql(sql)
+
+    def _on_schema_loaded(self, words: list[str]) -> None:
+        self._schema_words = words
+        for i in range(self._editor_tabs.count()):
+            tab = self._editor_tabs.widget(i)
+            if isinstance(tab, EditorTab):
+                tab.update_completer_words(words)
 
     # ================================================================== #
     #  Worker result handlers                                              #

@@ -21,7 +21,7 @@ import re
 from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor, QFont
 
 
-_KEYWORDS = (
+KEYWORDS = (
     "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "EXISTS",
     "LIKE", "ILIKE", "SIMILAR", "BETWEEN", "IS", "NULL", "TRUE", "FALSE",
     "DEFAULT", "ANY", "ALL", "SOME",
@@ -48,7 +48,7 @@ _KEYWORDS = (
     "ARRAY", "ROW", "RECORD", "VOID", "SETOF",
 )
 
-_FUNCTIONS = (
+FUNCTIONS = (
     "COUNT", "SUM", "AVG", "MAX", "MIN", "STDDEV", "VARIANCE",
     "NOW", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP",
     "EXTRACT", "DATE_PART", "DATE_TRUNC", "AGE", "MAKE_DATE",
@@ -84,11 +84,11 @@ class SQLHighlighter(QSyntaxHighlighter):
 
         self._rules: list[tuple[re.Pattern, QTextCharFormat]] = [
             # Keywords — whole-word, case-insensitive
-            (re.compile(r'\b(?:' + '|'.join(_KEYWORDS) + r')\b', re.IGNORECASE),
+            (re.compile(r'\b(?:' + '|'.join(KEYWORDS) + r')\b', re.IGNORECASE),
              _fmt('#569cd6', bold=True)),
 
             # Built-in functions — word followed by optional space + '('
-            (re.compile(r'\b(?:' + '|'.join(_FUNCTIONS) + r')\b(?=\s*\()',
+            (re.compile(r'\b(?:' + '|'.join(FUNCTIONS) + r')\b(?=\s*\()',
                         re.IGNORECASE),
              _fmt('#dcdcaa')),
 

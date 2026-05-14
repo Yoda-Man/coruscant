@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Coruscant v0.9.5 — User Manual</title>
+<title>Coruscant v0.9.7 — User Manual</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -255,7 +255,7 @@
 <nav id="sidebar">
   <div id="sidebar-header">
     <div class="app-name">Coruscant</div>
-    <div class="app-sub">User Manual &middot; v0.9.5</div>
+    <div class="app-sub">User Manual &middot; v0.9.7</div>
   </div>
   <div id="toc">
     <div class="toc-section">Overview</div>
@@ -274,6 +274,7 @@
     <a href="#s44" class="toc-sub">4.4 Test Connection</a>
     <a href="#s45" class="toc-sub">4.5 Recent Connections</a>
     <a href="#s46" class="toc-sub">4.6 Disconnecting</a>
+    <a href="#s47" class="toc-sub">4.7 Auto-reconnect</a>
 
     <div class="toc-section">Editor</div>
     <a href="#writing-sql">5. Writing SQL</a>
@@ -324,7 +325,7 @@
   <div id="hero">
     <img src="coruscant.png" alt="Coruscant — PostgreSQL Multi-Query Tool">
     <div class="meta">
-      <div class="version-badge">v0.9.5</div><br>
+      <div class="version-badge">v0.9.7</div><br>
       PostgreSQL Multi-Query Tool &nbsp;&middot;&nbsp; User Manual
     </div>
   </div>
@@ -470,6 +471,14 @@ python main.py</code></pre>
 
   <h2 id="s46">4.6 Disconnecting</h2>
   <p>Click <strong>Disconnect</strong>. Any open manual transaction is abandoned by the server automatically. Coruscant logs the disconnect and saves window geometry cleanly.</p>
+
+  <h2 id="s47">4.7 Auto-reconnect</h2>
+  <p>Coruscant includes an automatic reconnection feature to handle idle timeouts or transient network drops. When your database connection is closed by the server, Coruscant will:</p>
+  <ol>
+    <li>Update the connection indicator in the toolbar to <strong>Ready (Auto-reconnect)</strong> (orange color).</li>
+    <li>Automatically attempt to re-establish the connection the next time you click <strong>Execute</strong>, <strong>Refresh</strong>, or perform any action that requires a database connection.</li>
+    <li>If successful, your action will proceed immediately.</li>
+  </ol>
 
   <hr>
 

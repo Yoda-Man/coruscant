@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 0.9.6
+**Version:** 0.9.7
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -22,6 +22,7 @@
    - 4.4 [Testing a Connection](#44-testing-a-connection)
    - 4.5 [Recent Connections](#45-recent-connections)
    - 4.6 [Disconnecting](#46-disconnecting)
+   - 4.7 [Auto-reconnect](#47-auto-reconnect)
 5. [Writing SQL](#5-writing-sql)
    - 5.1 [The SQL Editor](#51-the-sql-editor)
    - 5.2 [Multiple Editor Tabs](#52-multiple-editor-tabs)
@@ -268,6 +269,18 @@ To delete a connection from your history, select it in the drop-down and click t
 ### 4.6 Disconnecting
 
 Click **Disconnect** in the toolbar. Any open manual transaction will be abandoned by the server automatically.
+
+### 4.7 Auto-reconnect
+
+Coruscant includes an automatic reconnection feature to handle idle timeouts or transient network drops. 
+
+When your database connection is closed by the server (often after being idle for several minutes), Coruscant will:
+
+1. Update the connection indicator in the toolbar to **Ready (Auto-reconnect)** (orange color).
+2. Automatically attempt to re-establish the connection the next time you click **Execute**, **Refresh**, or perform any action that requires a database connection.
+3. If the reconnection is successful, your query or action will proceed immediately.
+
+This ensures you don't have to manually re-enter credentials or reopen the connection dialog if you step away from your desk and the connection times out.
 
 ---
 

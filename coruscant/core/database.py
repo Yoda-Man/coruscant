@@ -88,6 +88,7 @@ class DatabaseManager:
 
     def __init__(self) -> None:
         self._conn: psycopg2.extensions.connection | None = None
+        self._last_params: dict | None = None
 
     # ------------------------------------------------------------------ #
     #  Connection lifecycle                                                #
@@ -119,6 +120,15 @@ class DatabaseManager:
                 sslmode=ssl_mode,
             )
             self._conn.autocommit = True
+            # Store successful connection parameters for auto-reconnect
+            self._last_params = {
+                "host": host,
+                "port": port,
+                "database": database,
+                "user": user,
+                "password": password,
+                "ssl_mode": ssl_mode,
+            }
         except psycopg2.OperationalError:
             log.exception("Connection failed  host=%s  port=%s  db=%s", host, port, database)
             raise
@@ -144,7 +154,31 @@ class DatabaseManager:
 
     @property
     def is_connected(self) -> bool:
-        return self._conn is not None and not self._conn.closed
+        """True when a connection exists and is not closed or broken."""
+        return self._conn is not None and self._conn.closed == 0
+
+    @property
+    def has_last_params(self) -> bool:
+        """True if we have parameters to attempt an auto-reconnect."""
+        return self._last_params is not None
+
+    def _ensure_connected(self) -> None:
+        """
+        Internal helper to check connection and attempt auto-reconnect if possible.
+        Raises RuntimeError if not connected and no parameters are available.
+        """
+        if self.is_connected:
+            return
+
+        if self._last_params:
+            log.info("Connection lost or idle; attempting auto-reconnect.")
+            try:
+                self.connect(**self._last_params)
+            except Exception as exc:
+                log.error("Auto-reconnect failed: %s", exc)
+                raise
+        else:
+            raise RuntimeError("Not connected to any database.")
 
     # ------------------------------------------------------------------ #
     #  Transaction control                                                 #
@@ -159,8 +193,7 @@ class DatabaseManager:
 
         Raises RuntimeError when not connected.
         """
-        if not self.is_connected:
-            raise RuntimeError("Not connected to any database.")
+        self._ensure_connected()
         self._conn.autocommit = enabled  # type: ignore[union-attr]
 
     @property
@@ -176,14 +209,12 @@ class DatabaseManager:
 
     def commit(self) -> None:
         """Commit the current transaction.  Raises RuntimeError if not connected."""
-        if not self.is_connected:
-            raise RuntimeError("Not connected to any database.")
+        self._ensure_connected()
         self._conn.commit()  # type: ignore[union-attr]
 
     def rollback(self) -> None:
         """Roll back the current transaction.  Raises RuntimeError if not connected."""
-        if not self.is_connected:
-            raise RuntimeError("Not connected to any database.")
+        self._ensure_connected()
         self._conn.rollback()  # type: ignore[union-attr]
 
     # ------------------------------------------------------------------ #
@@ -216,8 +247,7 @@ class DatabaseManager:
         psycopg2.Error  – database error; has a ``.statement`` attribute
                           with the offending SQL attached.
         """
-        if not self.is_connected:
-            raise RuntimeError("Not connected to any database.")
+        self._ensure_connected()
 
         stmts = split_statements(sql)
         if not stmts:
@@ -305,8 +335,7 @@ class DatabaseManager:
         Returns a list of schema dicts — see schema_browser for the shape.
         Raises RuntimeError if not connected.
         """
-        if not self.is_connected:
-            raise RuntimeError("Not connected to any database.")
+        self._ensure_connected()
 
         with self._conn.cursor() as cur:  # type: ignore[union-attr]
 

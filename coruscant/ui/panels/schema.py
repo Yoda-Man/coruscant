@@ -138,7 +138,8 @@ class SchemaBrowser(QWidget):
             self.refresh()
 
     def refresh(self) -> None:
-        if not self._db.is_connected or (self._worker and self._worker.isRunning()):
+        can_act = self._db.is_connected or self._db.has_last_params
+        if not can_act or (self._worker and self._worker.isRunning()):
             return
         self._status.setText("Loading…")
         self._refresh_btn.setEnabled(False)

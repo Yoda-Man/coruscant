@@ -465,30 +465,41 @@ class MainWindow(QMainWindow):
 
     def _update_ui_state(self) -> None:
         """Enable / disable actions based on connection and worker state."""
-        connected  = self._db.is_connected
-        busy       = (
+        connected     = self._db.is_connected
+        can_reconnect = self._db.has_last_params
+        can_act       = connected or can_reconnect
+
+        busy = (
             (self._worker        is not None and self._worker.isRunning())
             or (self._explain_worker is not None and self._explain_worker.isRunning())
         )
         autocommit = self._act_autocommit.isChecked()
 
+        # Connect is visible if NOT connected, but maybe disabled if busy
         self._act_connect.setVisible(not connected)
         self._act_disconnect.setVisible(connected)
-        self._act_connect.setEnabled(not connected)
+        
+        self._act_connect.setEnabled(not connected and not busy)
         self._act_disconnect.setEnabled(connected and not busy)
-        self._act_execute.setEnabled(connected and not busy)
+        
+        self._act_execute.setEnabled(can_act and not busy)
         self._act_cancel.setEnabled(connected and busy)
-        self._act_explain.setEnabled(connected and not busy)
-        self._act_explain_a.setEnabled(connected and not busy)
-        self._act_autocommit.setEnabled(connected and not busy)
+        self._act_explain.setEnabled(can_act and not busy)
+        self._act_explain_a.setEnabled(can_act and not busy)
+        self._act_autocommit.setEnabled(can_act and not busy)
         self._act_commit.setEnabled(connected and not busy and not autocommit)
         self._act_rollback.setEnabled(connected and not busy and not autocommit)
-        self._schema_browser._refresh_btn.setEnabled(connected and not busy)
+        self._schema_browser._refresh_btn.setEnabled(can_act and not busy)
 
         if connected:
             self._conn_label.setText("  ● Connected  ")
             self._conn_label.setStyleSheet(
                 "color: #81c784; font-weight: bold; padding-right: 10px;"
+            )
+        elif can_reconnect:
+            self._conn_label.setText("  ● Ready (Auto-reconnect)  ")
+            self._conn_label.setStyleSheet(
+                "color: #ffa726; font-weight: bold; padding-right: 10px;"
             )
         else:
             self._conn_label.setText("  ● Not connected  ")
@@ -601,7 +612,7 @@ class MainWindow(QMainWindow):
         self._explain_worker.start()
 
     def _on_autocommit_toggled(self, checked: bool) -> None:
-        if not self._db.is_connected:
+        if not self._db.is_connected and not self._db.has_last_params:
             return
         try:
             self._db.set_autocommit(checked)

@@ -1,5 +1,11 @@
 # Changelog
 
+### 0.9.7
+- **Database Auto-reconnect** — the application now automatically detects when a connection has been lost (e.g., due to an idle timeout) and re-establishes it before executing queries or refreshing the schema.
+- **Status Indicator** — added a "Ready (Auto-reconnect)" status state in the toolbar to inform users when a connection is closed but can be seamlessly restored.
+- **Improved Connection Resilience** — updated core connection logic to handle broken or server-side closed connections more reliably.
+- **Version Update** — bumped application version to 0.9.7 across all components and documentation.
+
 ### 0.9.6
 - **Connection Removal** — users can now delete individual saved connections from the connection dialog by clicking the 🗑 button.
 - **Independent Result Tabs** — each editor tab now maintains its own set of result tabs; running a query in one tab no longer clears results from other tabs.

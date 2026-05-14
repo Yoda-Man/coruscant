@@ -7,6 +7,8 @@ venv/
 *.egg-info/
 
 # PyInstaller build artefacts
+build/
+dist/
 distribution/.build/
 distribution/dist/
 distribution/*.spec.log

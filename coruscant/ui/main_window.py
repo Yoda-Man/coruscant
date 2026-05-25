@@ -66,6 +66,7 @@ class MainWindow(QMainWindow):
         self._tab_counter:    int               = 0
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
         self._schema_words:   list[str]         = []
+        self._current_connection_name = ""
 
         self._build_toolbar()
         self._build_left_dock()
@@ -98,7 +99,7 @@ class MainWindow(QMainWindow):
             return a
 
         # Connection
-        self._act_connect    = action("Connect")
+        self._act_connect    = action("Connections", "Open saved connections")
         self._act_disconnect = action("Disconnect")
 
         # Query execution
@@ -481,11 +482,11 @@ class MainWindow(QMainWindow):
         )
         autocommit = self._act_autocommit.isChecked()
 
-        # Connect is visible if NOT connected, but maybe disabled if busy
-        self._act_connect.setVisible(not connected)
+        # Connections stays visible so users can switch profiles without extra steps.
+        self._act_connect.setVisible(True)
         self._act_disconnect.setVisible(connected)
         
-        self._act_connect.setEnabled(not connected and not busy)
+        self._act_connect.setEnabled(not busy)
         self._act_disconnect.setEnabled(connected and not busy)
         
         self._act_execute.setEnabled(can_act and not busy)
@@ -498,7 +499,8 @@ class MainWindow(QMainWindow):
         self._schema_browser._refresh_btn.setEnabled(can_act and not busy)
 
         if connected:
-            self._conn_label.setText("  ● Connected  ")
+            name = self._current_connection_name or "Connected"
+            self._conn_label.setText(f"  ● {name}  ")
             self._conn_label.setStyleSheet(
                 "color: #81c784; font-weight: bold; padding-right: 10px;"
             )
@@ -521,16 +523,20 @@ class MainWindow(QMainWindow):
         dlg = ConnectionDialog(self)
         if dlg.exec() != ConnectionDialog.DialogCode.Accepted:
             return
-        params = dlg.get_params()
+        profile = dlg.get_profile()
+        params = profile.connect_params()
         try:
             self._db.connect(**params)
+            self._current_connection_name = profile.display_name
             self.statusBar().showMessage(
-                f"Connected to {params['database']} on "
+                f"Connected to {profile.display_name}: {params['database']} on "
                 f"{params['host']}:{params['port']}"
             )
             self._schema_browser.set_connected(True)
         except Exception as exc:
             log.error("Connection rejected by UI: %s", exc)
+            self._current_connection_name = ""
+            self._schema_browser.set_connected(False)
             StyledMessageBox.critical(self, "Connection Error",
                                  f"Could not connect:\n\n{exc}")
         self._update_ui_state()
@@ -538,6 +544,7 @@ class MainWindow(QMainWindow):
     def _on_disconnect(self) -> None:
         log.info("User initiated disconnect")
         self._db.disconnect()
+        self._current_connection_name = ""
         self.statusBar().showMessage("Disconnected.")
         self._schema_browser.set_connected(False)
         self._act_autocommit.setChecked(True)
@@ -673,9 +680,10 @@ class MainWindow(QMainWindow):
         if tab:
             tab.editor.clear()
         self._clear_unpinned_result_tabs()
-        if self._result_tabs.count() == 0:
-            self._result_tabs.hide()
-            self._placeholder.show()
+        placeholder, tabs = self._current_result_widgets()
+        if tabs and placeholder and tabs.count() == 0:
+            tabs.hide()
+            placeholder.show()
         self.statusBar().showMessage("Editor cleared.")
 
     def _on_open(self) -> None:

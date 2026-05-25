@@ -21,13 +21,22 @@ echo  Installing dependencies...
 pip install -r requirements.txt --quiet
 pip install pyinstaller --quiet
 
+if exist "distribution\dist\Coruscant.exe" del /f /q "distribution\dist\Coruscant.exe"
+
 echo  Building...
 echo.
 
 python -m PyInstaller distribution\coruscant.spec ^
     --distpath distribution\dist ^
     --workpath distribution\.build ^
+    --clean ^
     --noconfirm
+
+if errorlevel 1 (
+    echo.
+    echo  Build failed. Check the output above for errors.
+    exit /b 1
+)
 
 if exist "distribution\dist\Coruscant.exe" (
     echo.

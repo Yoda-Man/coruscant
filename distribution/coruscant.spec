@@ -23,7 +23,6 @@ a = Analysis(
         'psycopg2',
         'psycopg2._psycopg',
         'sqlparse',
-        'sqlparse.compat',
         'sqlparse.filters',
         'sqlparse.lexer',
     ],

@@ -221,7 +221,7 @@ distribution/
 ## Quick Start
 
 1. Launch Coruscant — either run the downloaded binary or `python main.py` from source.
-2. Click **Connect** → fill in server details → **OK**.
+2. Click **Connections** -> choose, import, or create a profile -> **Connect**.
 3. Type SQL in the editor (e.g. `SELECT * FROM pg_tables;`).
 4. Press **F5** or click **▶ Execute**.
 5. Results appear in tabs below the editor.
@@ -239,6 +239,7 @@ coruscant/
 ├── app.py               # QApplication factory (theme, Qt message handler, env snapshot)
 │
 ├── core/                # Business logic — no GUI imports
+│   ├── connections.py   # Saved profiles and pgAdmin import parsing
 │   ├── database.py      # DatabaseManager (connect, execute, transaction)
 │   ├── worker.py        # QueryWorker — background QThread
 │   └── sql.py           # split_statements() — pure SQL parser
@@ -279,7 +280,14 @@ and no parsing.
 
 ## Connecting to a Database
 
-Click **Connect** to open the connection dialog.
+Click **Connections** to open the connection manager. Saved profiles are shown
+in a searchable table with name, group, host, database, user, and SSL mode.
+Double-click a profile or select it and click **Connect**.
+
+Use **Import pgAdmin JSON** to load a pgAdmin server export. Coruscant imports
+the server name, group, host, port, maintenance database, username, SSL mode,
+and pgAdmin colour metadata. pgAdmin exports do not include passwords, so enter
+the password on the selected profile before testing or connecting.
 
 | Field | Description |
 |---|---|
@@ -304,7 +312,8 @@ Click **Connect** to open the connection dialog.
 **Test Connection** verifies credentials with a short-lived throwaway
 connection without affecting the current session.
 
-Up to **5 recent connections** are saved (passwords base64-encoded). Use the **🗑** button to remove a saved connection from your history.
+Saved connections are persisted in the OS settings store. Passwords are
+base64-encoded for casual obscurity, not encrypted.
 
 ---
 
@@ -567,7 +576,7 @@ Unhandled exceptions are caught by a custom `sys.excepthook`, logged with a full
 - **Saved passwords** are base64-encoded in the OS settings store
   (Windows Registry / macOS plist / Linux `.config`). This prevents casual
   inspection but is **not encryption**. Treat the settings store as sensitive.
-- For shared machines, clear recent connections after use, or use
+- For shared machines, delete saved connections after use, or use
   `~/.pgpass` / a secrets manager instead.
 - **`verify-full`** SSL provides the strongest server authentication and is
   recommended for production connections over untrusted networks.

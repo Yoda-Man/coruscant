@@ -1,12 +1,7 @@
 """
 coruscant.ui.dialogs.connection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Connection dialog — host, port, database, user, password, SSL mode.
-
-Recent connections (up to 5) are persisted in QSettings.
-Passwords are base64-encoded before storage to avoid plaintext in the registry.
-
-Author: Marwa Trust Mutemasango
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Connection manager dialog with saved profiles and pgAdmin import support.
 """
 
 from __future__ import annotations
@@ -15,84 +10,113 @@ import base64
 import sys
 from pathlib import Path
 
+from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import QColor, QBrush, QFont, QPixmap
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QLineEdit, QSpinBox, QPushButton,
-    QDialogButtonBox, QVBoxLayout, QHBoxLayout,
-    QComboBox, QGroupBox, QLabel,
+    QAbstractItemView,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from coruscant.core.connections import (
+    SSL_MODES,
+    SavedConnection,
+    deserialise_connections,
+    merge_connections,
+    parse_pgadmin_export_text,
+    serialise_connections,
 )
 from coruscant.ui.dialogs.message import StyledMessageBox
-from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QPixmap, QFont
+
 
 _BASE = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[3]
 _BANNER_PATH = str(_BASE / "docs" / "coruscant3.png")
 
 _SETTINGS_ORG = "Coruscant"
 _SETTINGS_APP = "Coruscant"
-_RECENT_KEY   = "connections/recent"
-_MAX_RECENT   = 5
-_SEP          = "\x00"   # field separator — must not appear in any value
-
-SSL_MODES = ["prefer", "disable", "allow", "require", "verify-ca", "verify-full"]
+_CONNECTIONS_KEY = "connections/saved"
+_LEGACY_RECENT_KEY = "connections/recent"
+_LEGACY_SEP = "\x00"
 
 SSL_TOOLTIP = (
-    "disable     – never use SSL\n"
-    "allow       – use SSL only if the server requires it\n"
-    "prefer      – use SSL if available  (default)\n"
-    "require     – always use SSL\n"
-    "verify-ca   – SSL + verify server certificate\n"
-    "verify-full – SSL + verify certificate + hostname"
+    "disable     - never use SSL\n"
+    "allow       - use SSL only if the server requires it\n"
+    "prefer      - use SSL if available (default)\n"
+    "require     - always use SSL\n"
+    "verify-ca   - SSL + verify server certificate\n"
+    "verify-full - SSL + verify certificate + hostname"
 )
 
 
-# ── Serialisation helpers ────────────────────────────────────────────── #
-
-def _encode(password: str) -> str:
-    return base64.b64encode(password.encode()).decode("ascii")
-
-def _decode(encoded: str) -> str:
+def _decode_legacy_password(encoded: str) -> str:
     try:
         return base64.b64decode(encoded.encode("ascii")).decode()
     except Exception:
-        return encoded   # legacy plaintext fallback
+        return encoded
 
-def _pack(host: str, port: int, db: str, user: str,
-          password: str, ssl_mode: str) -> str:
-    return _SEP.join([host, str(port), db, user, _encode(password), ssl_mode])
 
-def _unpack(s: str) -> dict | None:
-    parts = s.split(_SEP)
-    if len(parts) == 5:                          # legacy format (no ssl_mode)
-        host, port_s, db, user, raw_pw = parts
+def _unpack_legacy_recent(entry: str) -> SavedConnection | None:
+    parts = entry.split(_LEGACY_SEP)
+    if len(parts) == 5:
+        host, port_s, db, user, password = parts
         ssl_mode = "prefer"
-        password = raw_pw
     elif len(parts) == 6:
-        host, port_s, db, user, enc_pw, ssl_mode = parts
-        password = _decode(enc_pw)
+        host, port_s, db, user, encoded_password, ssl_mode = parts
+        password = _decode_legacy_password(encoded_password)
     else:
         return None
     try:
         port = int(port_s)
     except ValueError:
         return None
-    return dict(host=host, port=port, database=db,
-                user=user, password=password, ssl_mode=ssl_mode)
+    if not host:
+        return None
+    return SavedConnection(
+        name=f"{user}@{host}:{port}/{db}",
+        group="Recent",
+        host=host,
+        port=port,
+        database=db,
+        user=user,
+        password=password,
+        ssl_mode=ssl_mode,
+        source="recent",
+    )
 
-
-# ── Dialog ───────────────────────────────────────────────────────────── #
 
 class ConnectionDialog(QDialog):
     """
-    Modal dialog for entering PostgreSQL connection parameters.
+    Modal connection manager.
 
-    Call ``get_params()`` after ``exec()`` returns Accepted.
+    Call ``get_params()`` after ``exec()`` returns Accepted.  ``get_profile()``
+    returns the selected saved profile, including its display name.
     """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Connect to PostgreSQL")
-        self.setMinimumWidth(500)
+        self.setWindowTitle("Connection Manager")
+        self.resize(980, 640)
+        self.setMinimumSize(860, 560)
+
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+        self._connections: list[SavedConnection] = []
+        self._accepted_profile: SavedConnection | None = None
+
         self.setStyleSheet("""
             QGroupBox {
                 border: 1px solid #313244;
@@ -130,7 +154,7 @@ class ConnectionDialog(QDialog):
                     stop:0 #3c3c52, stop:1 #2e2e42);
                 border: 1px solid #555570;
                 border-radius: 4px;
-                padding: 6px 18px;
+                padding: 6px 14px;
                 color: #ddd;
                 font-size: 12px;
             }
@@ -144,254 +168,492 @@ class ConnectionDialog(QDialog):
                 color: #fff;
                 border-color: #4361ee;
             }
+            QTableWidget {
+                background: #1e1e28;
+                alternate-background-color: #242434;
+                border: 1px solid #343450;
+                gridline-color: #303044;
+                color: #d8d8e8;
+                selection-background-color: #094771;
+                selection-color: #fff;
+            }
+            QTableWidget::item {
+                padding: 5px 6px;
+            }
+            QHeaderView::section {
+                background: #2b2b40;
+                color: #d8d8e8;
+                border: 1px solid #3b3b56;
+                padding: 5px 6px;
+                font-size: 11px;
+                font-weight: 700;
+            }
         """)
-        self._build_ui()
-        self._load_recent()
 
-    # ── UI ────────────────────────────────────────────────────────────── #
+        self._build_ui()
+        self._load_connections()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 12)
         root.setSpacing(10)
-        root.setContentsMargins(12, 0, 12, 12)
 
-        # ── Banner image ──────────────────────────────────────────────── #
         banner = QLabel()
-        banner.setFixedHeight(130)
+        banner.setFixedHeight(105)
         banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pixmap = QPixmap(_BANNER_PATH)
         if not pixmap.isNull():
             banner.setPixmap(
-                pixmap.scaledToHeight(130, Qt.TransformationMode.SmoothTransformation)
+                pixmap.scaledToHeight(105, Qt.TransformationMode.SmoothTransformation)
             )
         else:
-            banner.setText("✦  Coruscant  ✦")
-            f = QFont(); f.setPointSize(18); f.setBold(True)
-            banner.setFont(f)
-        banner.setStyleSheet(
-            "background: #0d0d1a; border-radius: 0; margin: 0; padding: 0;"
-        )
-        root.setContentsMargins(0, 0, 0, 12)
+            banner.setText("Coruscant")
+            font = QFont()
+            font.setPointSize(18)
+            font.setBold(True)
+            banner.setFont(font)
+        banner.setStyleSheet("background: #0d0d1a;")
         root.addWidget(banner)
 
-        # ── Padded inner content ──────────────────────────────────────── #
-        inner = QVBoxLayout()
-        inner.setContentsMargins(12, 0, 12, 0)
-        inner.setSpacing(10)
+        body = QSplitter(Qt.Orientation.Horizontal)
+        body.setChildrenCollapsible(False)
+        body.addWidget(self._build_library_panel())
+        body.addWidget(self._build_details_panel())
+        body.setSizes([560, 360])
+        root.addWidget(body, 1)
 
-        # Recent connections
-        recent_box = QGroupBox("Recent connections")
-        rl = QHBoxLayout(recent_box)
-        rl.setContentsMargins(10, 10, 10, 10)
-        rl.setSpacing(8)
+        footer = QHBoxLayout()
+        footer.setContentsMargins(12, 0, 12, 0)
+        self._summary = QLabel("No saved connections.")
+        self._summary.setStyleSheet("color: #aeb6d8;")
+        footer.addWidget(self._summary, 1)
 
-        self._recent_combo = QComboBox()
-        self._recent_combo.setPlaceholderText("Select a saved connection…")
-        self._recent_combo.currentIndexChanged.connect(self._on_recent_selected)
-        rl.addWidget(self._recent_combo, 1)
-
-        self._remove_btn = QPushButton("🗑  Delete")
-        self._remove_btn.setToolTip("Remove selected connection")
-        self._remove_btn.clicked.connect(self._on_remove)
-        rl.addWidget(self._remove_btn)
-
-        inner.addWidget(recent_box)
-
-        # Fields
-        fields_box = QGroupBox("Connection parameters")
-        form = QFormLayout(fields_box)
-        form.setContentsMargins(14, 14, 14, 14)
-        form.setVerticalSpacing(10)
-        form.setHorizontalSpacing(12)
-
-        self._host     = QLineEdit("localhost")
-        self._port     = QSpinBox(); self._port.setRange(1, 65535); self._port.setValue(5432)
-        self._database = QLineEdit()
-        self._user     = QLineEdit()
-        self._password = QLineEdit(); self._password.setEchoMode(QLineEdit.EchoMode.Password)
-
-        self._ssl_mode = QComboBox()
-        for mode in SSL_MODES:
-            self._ssl_mode.addItem(mode)
-        self._ssl_mode.setCurrentText("prefer")
-        self._ssl_mode.setToolTip(SSL_TOOLTIP)
-
-        self._database.setPlaceholderText("database name")
-        self._user.setPlaceholderText("username")
-        self._password.setPlaceholderText("••••••••")
-
-        form.addRow("Host:",     self._host)
-        form.addRow("Port:",     self._port)
-        form.addRow("Database:", self._database)
-        form.addRow("Username:", self._user)
-        form.addRow("Password:", self._password)
-        form.addRow("SSL mode:", self._ssl_mode)
-        inner.addWidget(fields_box)
-
-        # Buttons
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-
-        test_btn = QPushButton("⚡  Test Connection")
-        test_btn.setToolTip("Verify the connection parameters without saving")
-        test_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-                    stop:0 #006270, stop:1 #004d57);
-                border: 1px solid #008899;
-                border-radius: 4px; padding: 6px 18px;
-                color: #80deea; font-weight: 600; font-size: 12px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-                    stop:0 #007a8a, stop:1 #006270);
-                color: #e0f7fa; border-color: #00acc1;
-            }
-            QPushButton:pressed { background: #004d57; }
-        """)
-        test_btn.clicked.connect(self._on_test)
-        btn_row.addWidget(test_btn)
-        btn_row.addStretch()
-
-        std = QDialogButtonBox(
+        self._std_buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        std.accepted.connect(self._on_ok)
-        std.rejected.connect(self.reject)
+        self._std_buttons.accepted.connect(self._on_connect)
+        self._std_buttons.rejected.connect(self.reject)
 
-        ok_btn = std.button(QDialogButtonBox.StandardButton.Ok)
-        ok_btn.setText("Connect")
-        ok_btn.setStyleSheet("""
+        connect_btn = self._std_buttons.button(QDialogButtonBox.StandardButton.Ok)
+        connect_btn.setText("Connect")
+        connect_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
                     stop:0 #1976D2, stop:1 #1565C0);
                 border: 1px solid #1E88E5;
-                border-radius: 4px; padding: 6px 22px;
-                color: #fff; font-weight: 600; font-size: 12px;
+                border-radius: 4px;
+                padding: 6px 22px;
+                color: #fff;
+                font-weight: 700;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
                     stop:0 #1E88E5, stop:1 #1976D2);
             }
-            QPushButton:pressed { background: #1565C0; }
-            QPushButton:disabled { background: #1a2a3a; color: #4a6a8a; border-color: #2a3a4a; }
+            QPushButton:disabled {
+                background: #1a2a3a;
+                color: #4a6a8a;
+                border-color: #2a3a4a;
+            }
         """)
+        footer.addWidget(self._std_buttons)
+        root.addLayout(footer)
 
-        btn_row.addWidget(std)
-        inner.addLayout(btn_row)
+    def _build_library_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 0, 6, 0)
+        layout.setSpacing(8)
 
-        root.addLayout(inner)
+        filters = QHBoxLayout()
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search by name, host, database, or user")
+        self._search.textChanged.connect(self._refresh_table)
+        filters.addWidget(self._search, 1)
 
-    # ── Recent connections ────────────────────────────────────────────── #
+        self._group_filter = QComboBox()
+        self._group_filter.currentTextChanged.connect(self._refresh_table)
+        filters.addWidget(self._group_filter)
+        layout.addLayout(filters)
 
-    def _load_recent(self) -> None:
-        self._remove_btn.setEnabled(False)
-        raw = self._settings.value(_RECENT_KEY, [])
-        if isinstance(raw, str):
-            raw = [raw]
-        self._recent_combo.blockSignals(True)
-        self._recent_combo.clear()
-        for entry in raw:
-            params = _unpack(entry)
-            if params:
-                label = (
-                    f"{params['user']}@{params['host']}:{params['port']}"
-                    f"/{params['database']}  [{params['ssl_mode']}]"
-                )
-                self._recent_combo.addItem(label, entry)
-        self._recent_combo.blockSignals(False)
+        self._table = QTableWidget(0, 6)
+        self._table.setHorizontalHeaderLabels(["Name", "Group", "Host", "Database", "User", "SSL"])
+        self._table.setAlternatingRowColors(True)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._table.verticalHeader().hide()
+        self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col in range(1, 6):
+            self._table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        self._table.itemSelectionChanged.connect(self._on_table_selection_changed)
+        self._table.itemDoubleClicked.connect(lambda _item: self._on_connect())
+        layout.addWidget(self._table, 1)
 
-    def _save_recent(self) -> None:
-        entry = _pack(
-            self._host.text().strip(), self._port.value(),
-            self._database.text().strip(), self._user.text().strip(),
-            self._password.text(), self._ssl_mode.currentText(),
+        actions = QHBoxLayout()
+        self._import_btn = QPushButton("Import pgAdmin JSON")
+        self._import_btn.clicked.connect(self._on_import_pgadmin)
+        actions.addWidget(self._import_btn)
+
+        self._new_btn = QPushButton("New")
+        self._new_btn.clicked.connect(self._on_new)
+        actions.addWidget(self._new_btn)
+
+        self._delete_btn = QPushButton("Delete")
+        self._delete_btn.clicked.connect(self._on_delete)
+        actions.addWidget(self._delete_btn)
+
+        actions.addStretch()
+        layout.addLayout(actions)
+        return panel
+
+    def _build_details_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(6, 0, 12, 0)
+        layout.setSpacing(8)
+
+        box = QGroupBox("Connection details")
+        form = QFormLayout(box)
+        form.setContentsMargins(14, 14, 14, 14)
+        form.setVerticalSpacing(10)
+        form.setHorizontalSpacing(12)
+
+        self._name = QLineEdit()
+        self._group = QLineEdit()
+        self._host = QLineEdit("localhost")
+        self._port = QSpinBox()
+        self._port.setRange(1, 65535)
+        self._port.setValue(5432)
+        self._database = QLineEdit("postgres")
+        self._user = QLineEdit()
+        self._password = QLineEdit()
+        self._password.setEchoMode(QLineEdit.EchoMode.Password)
+
+        self._ssl_mode = QComboBox()
+        self._ssl_mode.addItems(SSL_MODES)
+        self._ssl_mode.setCurrentText("prefer")
+        self._ssl_mode.setToolTip(SSL_TOOLTIP)
+
+        self._name.setPlaceholderText("Human friendly name")
+        self._group.setPlaceholderText("Optional group")
+        self._host.setPlaceholderText("Hostname or IP address")
+        self._database.setPlaceholderText("Database name")
+        self._user.setPlaceholderText("PostgreSQL username")
+        self._password.setPlaceholderText("Password (pgAdmin exports leave this blank)")
+
+        form.addRow("Name:", self._name)
+        form.addRow("Group:", self._group)
+        form.addRow("Host:", self._host)
+        form.addRow("Port:", self._port)
+        form.addRow("Database:", self._database)
+        form.addRow("Username:", self._user)
+        form.addRow("Password:", self._password)
+        form.addRow("SSL mode:", self._ssl_mode)
+        layout.addWidget(box)
+
+        btns = QHBoxLayout()
+        self._test_btn = QPushButton("Test Connection")
+        self._test_btn.clicked.connect(self._on_test)
+        btns.addWidget(self._test_btn)
+
+        self._save_btn = QPushButton("Save Profile")
+        self._save_btn.clicked.connect(self._on_save_profile)
+        btns.addWidget(self._save_btn)
+        btns.addStretch()
+        layout.addLayout(btns)
+
+        note = QLabel(
+            "Imported pgAdmin profiles include names, groups, hosts, databases, users, and SSL mode. "
+            "Enter the password before testing or connecting."
         )
-        raw = self._settings.value(_RECENT_KEY, [])
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #aeb6d8; padding-top: 4px;")
+        layout.addWidget(note)
+        layout.addStretch()
+        return panel
+
+    def _load_connections(self) -> None:
+        self._connections = deserialise_connections(self._settings.value(_CONNECTIONS_KEY, []))
+        if not self._connections:
+            self._connections = self._load_legacy_recent()
+            if self._connections:
+                self._persist_connections()
+        self._refresh_group_filter()
+        self._refresh_table()
+        self._select_first_row()
+
+    def _load_legacy_recent(self) -> list[SavedConnection]:
+        raw = self._settings.value(_LEGACY_RECENT_KEY, [])
         if isinstance(raw, str):
             raw = [raw]
-        raw = [r for r in raw if r != entry]
-        raw.insert(0, entry)
-        self._settings.setValue(_RECENT_KEY, raw[:_MAX_RECENT])
+        connections = []
+        for entry in raw or []:
+            conn = _unpack_legacy_recent(str(entry))
+            if conn:
+                connections.append(conn)
+        return connections
 
-    def _on_recent_selected(self, index: int) -> None:
-        self._remove_btn.setEnabled(index >= 0)
-        entry = self._recent_combo.itemData(index)
-        if not entry:
-            return
-        params = _unpack(entry)
-        if not params:
-            return
-        self._host.setText(params["host"])
-        self._port.setValue(params["port"])
-        self._database.setText(params["database"])
-        self._user.setText(params["user"])
-        self._password.setText(params["password"])
-        self._ssl_mode.setCurrentText(params.get("ssl_mode", "prefer"))
+    def _persist_connections(self) -> None:
+        self._settings.setValue(_CONNECTIONS_KEY, serialise_connections(self._connections))
 
-    def _on_remove(self) -> None:
-        idx = self._recent_combo.currentIndex()
-        if idx < 0:
-            return
-        entry = self._recent_combo.itemData(idx)
-        if not entry:
-            return
+    def _refresh_group_filter(self) -> None:
+        current = self._group_filter.currentText() if self._group_filter.count() else "All groups"
+        groups = sorted({conn.group for conn in self._connections if conn.group.strip()}, key=str.lower)
+        self._group_filter.blockSignals(True)
+        self._group_filter.clear()
+        self._group_filter.addItem("All groups")
+        self._group_filter.addItems(groups)
+        idx = self._group_filter.findText(current)
+        self._group_filter.setCurrentIndex(idx if idx >= 0 else 0)
+        self._group_filter.blockSignals(False)
 
-        # Confirm removal
-        res = StyledMessageBox.question(
-            self, "Remove Connection",
-            "Are you sure you want to remove this connection from your history?",
+    def _refresh_table(self) -> None:
+        selected_key = self._selected_connection().key if self._selected_connection() else ""
+        query = self._search.text().strip().lower()
+        group = self._group_filter.currentText()
+
+        visible: list[tuple[int, SavedConnection]] = []
+        for index, conn in enumerate(self._connections):
+            haystack = " ".join(
+                [conn.display_name, conn.group, conn.host, conn.database, conn.user, conn.ssl_mode]
+            ).lower()
+            if query and query not in haystack:
+                continue
+            if group and group != "All groups" and conn.group != group:
+                continue
+            visible.append((index, conn))
+
+        self._table.blockSignals(True)
+        self._table.setRowCount(0)
+        for row, (index, conn) in enumerate(visible):
+            self._table.insertRow(row)
+            values = [conn.display_name, conn.group, conn.host, conn.database, conn.user, conn.ssl_mode]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                item.setData(Qt.ItemDataRole.UserRole, index)
+                if col == 0:
+                    item.setToolTip(f"{conn.host}:{conn.port}/{conn.database}")
+                if conn.bg_color:
+                    color = QColor(conn.bg_color)
+                    if color.isValid():
+                        item.setBackground(QBrush(color))
+                        if conn.fg_color and QColor(conn.fg_color).isValid():
+                            item.setForeground(QBrush(QColor(conn.fg_color)))
+                self._table.setItem(row, col, item)
+            if conn.source == "pgadmin":
+                self._table.item(row, 0).setToolTip("Imported from pgAdmin")
+        self._table.blockSignals(False)
+
+        for row in range(self._table.rowCount()):
+            index = self._table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            if self._connections[index].key == selected_key:
+                self._table.selectRow(row)
+                break
+
+        self._summary.setText(
+            f"{len(visible)} shown / {len(self._connections)} saved connections"
+            if self._connections else
+            "No saved connections. Import a pgAdmin JSON export or create one manually."
         )
-        if not res:
-            return
+        self._delete_btn.setEnabled(self._table.currentRow() >= 0)
 
-        raw = self._settings.value(_RECENT_KEY, [])
-        if isinstance(raw, str):
-            raw = [raw]
-        raw = [r for r in raw if r != entry]
-        self._settings.setValue(_RECENT_KEY, raw)
-        self._load_recent()
+    def _select_first_row(self) -> None:
+        if self._table.rowCount():
+            self._table.selectRow(0)
+        else:
+            self._clear_form()
 
-        # Clear fields if they match the removed entry
-        self._host.clear()
-        self._database.clear()
+    def _selected_index(self) -> int | None:
+        model = self._table.selectionModel()
+        if model is None or not model.hasSelection():
+            return None
+        row = self._table.currentRow()
+        if row < 0:
+            return None
+        item = self._table.item(row, 0)
+        if not item:
+            return None
+        index = item.data(Qt.ItemDataRole.UserRole)
+        return int(index) if index is not None else None
+
+    def _selected_connection(self) -> SavedConnection | None:
+        index = self._selected_index()
+        if index is None or index >= len(self._connections):
+            return None
+        return self._connections[index]
+
+    def _on_table_selection_changed(self) -> None:
+        conn = self._selected_connection()
+        self._delete_btn.setEnabled(conn is not None)
+        if conn:
+            self._populate_form(conn)
+
+    def _populate_form(self, conn: SavedConnection) -> None:
+        self._name.setText(conn.display_name)
+        self._group.setText(conn.group)
+        self._host.setText(conn.host)
+        self._port.setValue(conn.port)
+        self._database.setText(conn.database)
+        self._user.setText(conn.user)
+        self._password.setText(conn.password)
+        self._ssl_mode.setCurrentText(conn.ssl_mode)
+
+    def _clear_form(self) -> None:
+        self._name.clear()
+        self._group.clear()
+        self._host.setText("localhost")
+        self._port.setValue(5432)
+        self._database.setText("postgres")
         self._user.clear()
         self._password.clear()
         self._ssl_mode.setCurrentText("prefer")
 
-    # ── Handlers ─────────────────────────────────────────────────────── #
+    def _profile_from_form(self) -> SavedConnection | None:
+        for field, name in [(self._host, "Host"), (self._database, "Database"), (self._user, "Username")]:
+            if not field.text().strip():
+                StyledMessageBox.warning(self, "Missing field", f"{name} is required.")
+                return None
+
+        name = self._name.text().strip()
+        conn = SavedConnection(
+            name=name or f"{self._user.text().strip()}@{self._host.text().strip()}",
+            group=self._group.text().strip(),
+            host=self._host.text().strip(),
+            port=self._port.value(),
+            database=self._database.text().strip(),
+            user=self._user.text().strip(),
+            password=self._password.text(),
+            ssl_mode=self._ssl_mode.currentText(),
+            source="manual",
+        )
+        selected = self._selected_connection()
+        if selected:
+            conn.bg_color = selected.bg_color
+            conn.fg_color = selected.fg_color
+            conn.source = selected.source if selected.source == "pgadmin" else "manual"
+        return conn
+
+    def _on_import_pgadmin(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import pgAdmin Server JSON",
+            "",
+            "JSON files (*.json);;All files (*)",
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, encoding="utf-8") as fh:
+                imported = parse_pgadmin_export_text(fh.read())
+        except (OSError, ValueError) as exc:
+            StyledMessageBox.critical(self, "Import pgAdmin JSON", str(exc))
+            return
+
+        self._connections, added, updated = merge_connections(self._connections, imported)
+        self._persist_connections()
+        self._refresh_group_filter()
+        self._refresh_table()
+        self._select_first_row()
+        StyledMessageBox.information(
+            self,
+            "Import Complete",
+            f"Imported {len(imported)} pgAdmin connection(s).\n\nAdded: {added}\nUpdated: {updated}",
+        )
+
+    def _on_new(self) -> None:
+        self._table.clearSelection()
+        self._clear_form()
+        self._name.setFocus()
+
+    def _on_delete(self) -> None:
+        index = self._selected_index()
+        if index is None:
+            return
+        conn = self._connections[index]
+        if not StyledMessageBox.question(
+            self,
+            "Delete Connection",
+            f"Remove '{conn.display_name}' from saved connections?",
+        ):
+            return
+        del self._connections[index]
+        self._persist_connections()
+        self._refresh_group_filter()
+        self._refresh_table()
+        self._select_first_row()
+
+    def _on_save_profile(self) -> None:
+        conn = self._profile_from_form()
+        if not conn:
+            return
+
+        index = self._selected_index()
+        if index is None:
+            self._connections, _, _ = merge_connections(self._connections, [conn])
+        else:
+            self._connections[index] = conn
+            self._connections.sort(key=lambda c: (c.group.lower(), c.display_name.lower()))
+
+        self._persist_connections()
+        self._refresh_group_filter()
+        self._refresh_table()
+        self._select_connection_by_key(conn.key)
+        self.status_message(f"Saved '{conn.display_name}'.")
+
+    def _select_connection_by_key(self, key: str) -> None:
+        for row in range(self._table.rowCount()):
+            index = self._table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            if self._connections[index].key == key:
+                self._table.selectRow(row)
+                return
+
+    def status_message(self, message: str) -> None:
+        self._summary.setText(message)
 
     def _on_test(self) -> None:
+        conn = self._profile_from_form()
+        if not conn:
+            return
         try:
             import psycopg2
-            conn = psycopg2.connect(
-                host=self._host.text().strip(), port=self._port.value(),
-                dbname=self._database.text().strip(), user=self._user.text().strip(),
-                password=self._password.text(), connect_timeout=5,
-                sslmode=self._ssl_mode.currentText(),
+            db = psycopg2.connect(
+                host=conn.host,
+                port=conn.port,
+                dbname=conn.database,
+                user=conn.user,
+                password=conn.password,
+                connect_timeout=5,
+                sslmode=conn.ssl_mode,
             )
-            conn.close()
-            StyledMessageBox.information(self, "Test Connection", "Connection successful!")
+            db.close()
+            StyledMessageBox.information(self, "Test Connection", "Connection successful.")
         except Exception as exc:
             StyledMessageBox.critical(self, "Test Connection", f"Connection failed:\n\n{exc}")
 
-    def _on_ok(self) -> None:
-        for field, name in [(self._host, "Host"), (self._database, "Database"),
-                            (self._user, "Username")]:
-            if not field.text().strip():
-                StyledMessageBox.warning(self, "Missing field", f"{name} is required.")
-                return
-        self._save_recent()
+    def _on_connect(self) -> None:
+        conn = self._profile_from_form()
+        if not conn:
+            return
+
+        index = self._selected_index()
+        if index is None:
+            self._connections, _, _ = merge_connections(self._connections, [conn])
+        else:
+            self._connections[index] = conn
+            self._connections.sort(key=lambda c: (c.group.lower(), c.display_name.lower()))
+        self._persist_connections()
+        self._accepted_profile = conn
         self.accept()
 
-    # ── Public API ────────────────────────────────────────────────────── #
+    def get_profile(self) -> SavedConnection:
+        if self._accepted_profile is None:
+            conn = self._profile_from_form()
+            if conn is None:
+                raise RuntimeError("No connection profile selected.")
+            return conn
+        return self._accepted_profile
 
     def get_params(self) -> dict:
-        return {
-            "host":     self._host.text().strip(),
-            "port":     self._port.value(),
-            "database": self._database.text().strip(),
-            "user":     self._user.text().strip(),
-            "password": self._password.text(),
-            "ssl_mode": self._ssl_mode.currentText(),
-        }
+        return self.get_profile().connect_params()

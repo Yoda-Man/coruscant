@@ -5,6 +5,7 @@ All tests use unittest.mock — no live PostgreSQL connection required.
 """
 from __future__ import annotations
 
+from itertools import count
 from unittest.mock import MagicMock, patch, call
 
 import psycopg2
@@ -51,11 +52,20 @@ def _make_connected_db(
     mock_cursor.fetchone.return_value = fetchone_return
     mock_cursor.rowcount = rowcount
 
+    ping_cursor = MagicMock()
+    ping_cursor.__enter__ = MagicMock(return_value=ping_cursor)
+    ping_cursor.__exit__ = MagicMock(return_value=False)
+
     mock_conn = MagicMock()
     mock_conn.closed = False
     mock_conn.autocommit = autocommit
     mock_conn.encoding = "utf-8"
-    mock_conn.cursor.return_value = mock_cursor
+    cursor_calls = count()
+
+    def cursor_factory():
+        return ping_cursor if next(cursor_calls) == 0 else mock_cursor
+
+    mock_conn.cursor.side_effect = cursor_factory
 
     db._conn = mock_conn
     return db, mock_conn, mock_cursor
@@ -346,9 +356,9 @@ class TestExecuteErrors:
         from unittest.mock import PropertyMock
         db, mock_conn, mock_cursor = _make_connected_db()
         mock_cursor.execute.side_effect = psycopg2.OperationalError("lost")
-        # closed returns False on the first check (is_connected guard at top of
-        # execute) and True on the second check (inside the except handler).
-        type(mock_conn).closed = PropertyMock(side_effect=[False, True])
+        # closed returns False for the zombie-detection ping and the connected
+        # guard, then True inside the execute error handler.
+        type(mock_conn).closed = PropertyMock(side_effect=[False, False, True])
         with pytest.raises(psycopg2.OperationalError):
             db.execute("SELECT 1")
         assert db._conn is None

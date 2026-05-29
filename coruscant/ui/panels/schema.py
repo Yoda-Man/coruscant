@@ -44,11 +44,11 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox,
     QLabel, QTreeWidget, QTreeWidgetItem, QStackedWidget, QMenu,
     QHeaderView,
 )
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import Qt, Signal, QThread, QSettings
 
 from coruscant.core.database import DatabaseManager
 
@@ -77,13 +77,19 @@ class _SchemaWorker(QThread):
 class SchemaBrowser(QWidget):
     """Left-dock schema tree panel."""
 
-    insert_sql:    Signal = Signal(str)
-    schema_loaded: Signal = Signal(list)  # list[str] of all identifiers
+    insert_sql:           Signal = Signal(str)
+    schema_loaded:        Signal = Signal(list)   # list[str] of all identifiers
+    autocomplete_changed: Signal = Signal(bool)
+    autoclose_changed:    Signal = Signal(bool)
+    guide_requested:      Signal = Signal()
+    scripts_requested:    Signal = Signal()
+    line_numbers_changed: Signal = Signal(bool)
 
     def __init__(self, db: DatabaseManager, parent=None) -> None:
         super().__init__(parent)
-        self._db     = db
+        self._db      = db
         self._worker: _SchemaWorker | None = None
+        self._qsettings = QSettings("Coruscant", "Coruscant")
         self._build_ui()
         self._set_connected(False)
 
@@ -103,7 +109,70 @@ class SchemaBrowser(QWidget):
         self._refresh_btn.setStyleSheet("font-size: 10px; padding: 0 6px;")
         self._refresh_btn.clicked.connect(self.refresh)
         header.addWidget(self._refresh_btn)
+
+        self._scripts_btn = QPushButton("📜 Scripts")
+        self._scripts_btn.setFixedHeight(22)
+        self._scripts_btn.setStyleSheet(
+            "font-size: 10px; padding: 0 6px;"
+            " background: #1A237E; color: #90CAF9;"
+            " border: 1px solid #283593; border-radius: 3px;"
+        )
+        self._scripts_btn.setToolTip("Open Support Script Manager")
+        self._scripts_btn.clicked.connect(lambda: self.scripts_requested.emit())
+        header.addWidget(self._scripts_btn)
+        self._settings_btn = QPushButton("⚙ Settings")
+        self._settings_btn.setFixedHeight(22)
+        self._settings_btn.setStyleSheet("font-size: 10px; padding: 0 6px;")
+        self._settings_btn.setCheckable(True)
+        self._settings_btn.clicked.connect(self._toggle_settings_panel)
+        header.addWidget(self._settings_btn)
+
+        self._guide_btn = QPushButton("? Guide")
+        self._guide_btn.setFixedHeight(22)
+        self._guide_btn.setStyleSheet(
+            "font-size: 10px; padding: 0 6px;"
+            " background: #1A237E; color: #90CAF9;"
+            " border: 1px solid #283593; border-radius: 3px;"
+        )
+        self._guide_btn.setToolTip("Open the Coruscant quick-reference guide")
+        self._guide_btn.clicked.connect(lambda: self.guide_requested.emit())
+        header.addWidget(self._guide_btn)
         layout.addLayout(header)
+
+        # ── Settings panel (hidden by default) ──────────────────────── #
+        self._settings_panel = QWidget()
+        self._settings_panel.setVisible(False)
+        self._settings_panel.setStyleSheet(
+            "QWidget { background: #1a1a2e; border: 1px solid #2e2e4e;"
+            " border-radius: 4px; padding: 2px; }"
+            " QCheckBox { color: #cdd6f4; font-size: 11px; border: none; }"
+        )
+        sp_layout = QVBoxLayout(self._settings_panel)
+        sp_layout.setContentsMargins(8, 6, 8, 6)
+        sp_layout.setSpacing(6)
+
+        self._autocomplete_cb = QCheckBox("Auto-complete")
+        self._autocomplete_cb.setChecked(
+            self._qsettings.value("settings/autocomplete", True, type=bool)
+        )
+        self._autocomplete_cb.toggled.connect(self._on_autocomplete_toggled)
+        sp_layout.addWidget(self._autocomplete_cb)
+
+        self._autoclose_cb = QCheckBox("Auto-close cell viewer after copy")
+        self._autoclose_cb.setChecked(
+            self._qsettings.value("settings/autoclose_cell_viewer", True, type=bool)
+        )
+        self._autoclose_cb.toggled.connect(self._on_autoclose_toggled)
+        sp_layout.addWidget(self._autoclose_cb)
+
+        self._linenumbers_cb = QCheckBox("Line numbers in editor")
+        self._linenumbers_cb.setChecked(
+            self._qsettings.value("settings/line_numbers", True, type=bool)
+        )
+        self._linenumbers_cb.toggled.connect(self._on_line_numbers_toggled)
+        sp_layout.addWidget(self._linenumbers_cb)
+
+        layout.addWidget(self._settings_panel)
 
         self._stack = QStackedWidget()
 
@@ -115,6 +184,9 @@ class SchemaBrowser(QWidget):
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
         self._tree.setColumnCount(2)
+        _tree_font = self._tree.font()
+        _tree_font.setPointSize(_tree_font.pointSize() + 1)
+        self._tree.setFont(_tree_font)
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self._tree.header().setStretchLastSection(False)
@@ -150,6 +222,21 @@ class SchemaBrowser(QWidget):
         self._worker.start()
 
     # ── Private helpers ──────────────────────────────────────────────── #
+
+    def _toggle_settings_panel(self, checked: bool) -> None:
+        self._settings_panel.setVisible(checked)
+
+    def _on_autocomplete_toggled(self, checked: bool) -> None:
+        self._qsettings.setValue("settings/autocomplete", checked)
+        self.autocomplete_changed.emit(checked)
+
+    def _on_autoclose_toggled(self, checked: bool) -> None:
+        self._qsettings.setValue("settings/autoclose_cell_viewer", checked)
+        self.autoclose_changed.emit(checked)
+
+    def _on_line_numbers_toggled(self, checked: bool) -> None:
+        self._qsettings.setValue("settings/line_numbers", checked)
+        self.line_numbers_changed.emit(checked)
 
     def _set_connected(self, connected: bool) -> None:
         self._stack.setCurrentIndex(1 if connected else 0)
@@ -191,9 +278,11 @@ class SchemaBrowser(QWidget):
                                 {"kind": "schema", "schema": schema_name})
             self._make_bold(schema_item)
 
+            tbl_items: list[tuple[QTreeWidgetItem, str, str]] = []
             for tbl in schema_info.get("tables", []):
                 tbl_item = self._make_table_item(schema_name, tbl)
                 schema_item.addChild(tbl_item)
+                tbl_items.append((tbl_item, schema_name, tbl["name"]))
                 identifiers.add(tbl["name"])
                 for col in tbl.get("columns", []):
                     identifiers.add(col["name"])
@@ -220,6 +309,10 @@ class SchemaBrowser(QWidget):
 
             self._tree.addTopLevelItem(schema_item)
 
+            # Add SELECT buttons now that items are in the tree
+            for tbl_item, sname, tname in tbl_items:
+                self._add_select_button(tbl_item, sname, tname)
+
         self.schema_loaded.emit(sorted(list(identifiers)))
 
         for i in range(self._tree.topLevelItemCount()):
@@ -230,8 +323,7 @@ class SchemaBrowser(QWidget):
     def _make_table_item(self, schema: str, tbl: dict) -> QTreeWidgetItem:
         name     = tbl["name"]
         ttype    = tbl.get("type", "")
-        abbr     = "V" if "VIEW" in ttype.upper() else "T"
-        tbl_item = QTreeWidgetItem([name, abbr])
+        tbl_item = QTreeWidgetItem([name, ""])   # col 1 gets a ▶ SELECT button via setItemWidget
         tbl_item.setData(0, Qt.ItemDataRole.UserRole,
                          {"kind": "table", "schema": schema, "table": name})
         tbl_item.setToolTip(0, f"{ttype}  {schema}.{name}")
@@ -279,12 +371,25 @@ class SchemaBrowser(QWidget):
             if grp:
                 tbl_item.addChild(grp)
 
-        # Collect identifiers for parent's list
-        # (This is a bit hacky but efficient since we're already iterating)
-        # We'll just rely on the parent _populate_tree to call this logic?
-        # Actually, let's just collect them in _populate_tree loop.
-
         return tbl_item
+
+    def _add_select_button(self, item: QTreeWidgetItem, schema: str, table: str) -> None:
+        """Set a compact SELECT button as the widget for column 1 of a table/view row."""
+        btn = QPushButton("▶ SELECT")
+        btn.setFixedHeight(18)
+        btn.setStyleSheet(
+            "QPushButton { font-size: 9px; padding: 0 4px;"
+            " background: #1E3A5F; color: #90CAF9;"
+            " border: 1px solid #2a5080; border-radius: 3px; }"
+            "QPushButton:hover { background: #2a5a8f; }"
+            "QPushButton:pressed { background: #1565C0; }"
+        )
+        btn.setToolTip(f'Append SELECT * FROM "{schema}"."{table}" LIMIT 100;')
+        btn.clicked.connect(
+            lambda _checked=False, s=schema, t=table:
+                self.insert_sql.emit(f'SELECT * FROM "{s}"."{t}" LIMIT 100;')
+        )
+        self._tree.setItemWidget(item, 1, btn)
 
     def _on_tree_error(self, message: str) -> None:
         log.error("Schema load error: %s", message)

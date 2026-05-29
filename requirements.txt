@@ -1,3 +1,4 @@
 pyside6>=6.5
 psycopg2-binary>=2.9
 sqlparse>=0.4
+networkx>=2.6

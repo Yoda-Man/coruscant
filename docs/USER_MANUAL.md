@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 0.9.9
+**Version:** 1.0.0
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -58,9 +58,10 @@
 12. [EXPLAIN and Query Plans](#12-explain-and-query-plans)
 13. [Themes](#13-themes)
 14. [Logging](#14-logging)
-15. [Keyboard Shortcuts Reference](#15-keyboard-shortcuts-reference)
-16. [Troubleshooting](#16-troubleshooting)
-17. [Security Guidance](#17-security-guidance)
+15. [Support Script Manager](#15-support-script-manager)
+16. [Keyboard Shortcuts Reference](#16-keyboard-shortcuts-reference)
+17. [Troubleshooting](#17-troubleshooting)
+18. [Security Guidance](#18-security-guidance)
 
 ---
 
@@ -115,7 +116,8 @@ its own; it connects directly to your PostgreSQL instance.
 |---|---|
 | Operating System | Windows 10/11, macOS 11+, or Linux |
 | PostgreSQL server | Any version from 9.x to 16+ |
-| Python | 3.10 or newer *(only required when running from source)* |
+| Python | 3.10+ *(only required when running from source)* |
+| networkx | 2.6+ *(required for Support Script Manager)* |
 | Screen resolution | 1280 × 720 minimum (1920 × 1080 recommended) |
 
 ### 2.2 Installation
@@ -293,6 +295,12 @@ The main editing area supports:
 - **Syntax highlighting:** keywords (blue), functions (yellow), strings (orange), numbers (green), comments (grey).
 - **Multiple statements:** separate them with semicolons (`;`). Each statement runs independently and produces its own result tab.
 - **Tab key:** inserts spaces for indentation.
+
+**Line numbers** are shown in a gutter to the left of the editor. The active line
+is highlighted in blue; the current-line band provides a subtle highlight across
+the full width. Toggle both in the **⚙ Settings** panel of the Schema Browser.
+
+**Current-line highlight** follows the cursor automatically.
 
 ### 5.2 Multiple Editor Tabs
 
@@ -792,19 +800,54 @@ Select-String -Path "$env:APPDATA\Coruscant\logs\coruscant.log" -Pattern "ERROR|
 
 ---
 
-## 15. Keyboard Shortcuts Reference
+## 15. Support Script Manager
+
+See [docs/SCRIPT_MANAGER.md](SCRIPT_MANAGER.md) for full documentation.
+
+**Opening the Script Manager:** click **📜 Scripts** in the Schema Browser panel.
+
+**Uploading a script collection:** click **⬆ Upload Scripts ZIP** and select a  file
+containing your  maintenance scripts. The engine builds a knowledge graph in
+under 5 seconds for a typical collection of 100 scripts.
+
+**Searching:** type natural language into the search box. Results update as you type.
+
+| Query example | What it finds |
+|---|---|
+| `fix deadlock` | Scripts that resolve lock contention |
+| `vacuum freeze` | Scripts for transaction wraparound prevention |
+| `40P01` | Scripts mentioning the deadlock SQLSTATE code |
+| `pg_stat_activity` | Scripts that query the activity view |
+| `kill idle connections` | Scripts that terminate idle backends |
+
+**Loading a script:** double-click any result row to load the full script content
+into the active SQL editor tab.
+
+**Formatting scripts for best results:**
+
+
+
+The engine weights `@desc` and `@fixes` tags at 5×, filename tokens at 3×,
+and SQL body text at 1×.
+
+---
+
+## 16. Keyboard Shortcuts Reference
 
 | Shortcut | Action |
 |---|---|
-| **F5** | Execute the full SQL script (or selection if text is selected) |
-| **Escape** | Cancel the currently running query |
-| **Ctrl+T** | Open a new editor tab |
-| **Ctrl+W** | Close the current editor tab |
-| **Ctrl+Tab** | Switch to the next editor tab |
-| **Ctrl+Shift+Tab** | Switch to the previous editor tab |
-| **Ctrl+C** *(in a result table)* | Copy selected rows to clipboard as TSV |
+| **F5** | Execute all editor tabs sequentially |
+| **Ctrl+Enter** | Execute current tab (selection or full content) |
+| **Ctrl+F5** | Execute only the statement the cursor is inside |
+| **Escape** | Cancel a running query |
+| **Ctrl+T** | New editor tab |
+| **Ctrl+W** | Close current editor tab |
+| **Ctrl+Tab** | Switch to next editor tab |
+| **Ctrl+Shift+Tab** | Switch to previous editor tab |
+| **Ctrl+Space** | Trigger SQL autocomplete |
+| **Ctrl+C** *(result grid)* | Copy selected rows as TSV |
+| **Ctrl+Shift+C** *(result grid)* | Copy selected rows with column headers |
 
----
 
 ## 16. Troubleshooting
 
@@ -900,5 +943,4 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 
 ---
 
-*End of User Manual, Coruscant v0.9.5*
 *Author: Marwa Trust Mutemasango*

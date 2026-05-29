@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QLabel, QCheckBox, QWidget
 )
 from PySide6.QtGui import QFont, QGuiApplication
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSettings
 
 _DIALOG_STYLE = """
     QDialog {
@@ -154,3 +154,7 @@ class CellViewerDialog(QDialog):
         self.copy_btn.setText("Copy to Clipboard")
         self.copy_btn.setEnabled(True)
         self.copy_btn.setStyleSheet("")  # Restore to original stylesheet class
+
+        settings = QSettings("Coruscant", "Coruscant")
+        if settings.value("settings/autoclose_cell_viewer", True, type=bool):
+            self.accept()

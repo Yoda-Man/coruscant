@@ -1,7 +1,7 @@
 """
 coruscant.ui.panels.history
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Query history panel — stores and displays the last 100 executed queries.
+Query history panel -- stores and displays the last 100 executed queries.
 
 Each entry shows the first 80 characters of SQL, a timestamp, and elapsed time.
 Double-clicking emits ``query_selected(sql)`` so MainWindow can load it.
@@ -12,6 +12,7 @@ Author: Marwa Trust Mutemasango
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from PySide6.QtWidgets import (
@@ -19,6 +20,8 @@ from PySide6.QtWidgets import (
     QLabel, QListWidget, QListWidgetItem,
 )
 from PySide6.QtCore import Qt, Signal, QSettings
+
+log = logging.getLogger(__name__)
 
 _SETTINGS_ORG = "Coruscant"
 _SETTINGS_APP = "Coruscant"
@@ -38,7 +41,7 @@ class HistoryPanel(QWidget):
         self._build_ui()
         self._refresh_list()
 
-    # ── Construction ─────────────────────────────────────────────────── #
+    # -- Construction ----------------------------------------------------- #
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -63,7 +66,7 @@ class HistoryPanel(QWidget):
         self._list.itemDoubleClicked.connect(self._on_double_click)
         layout.addWidget(self._list)
 
-    # ── Public API ───────────────────────────────────────────────────── #
+    # -- Public API ------------------------------------------------------- #
 
     def add_entry(self, sql: str, elapsed_ms: float) -> None:
         """
@@ -85,21 +88,21 @@ class HistoryPanel(QWidget):
         self._save()
         self._refresh_list()
 
-    # ── Private helpers ──────────────────────────────────────────────── #
+    # -- Private helpers -------------------------------------------------- #
 
     def _refresh_list(self) -> None:
         self._list.clear()
         for entry in self._entries:
             preview = entry["sql"].replace("\n", " ").replace("\r", "")
             if len(preview) > 80:
-                preview = preview[:77] + "…"
+                preview = preview[:77] + "..."
 
             elapsed = entry.get("elapsed_ms", 0)
             elapsed_str = (f"{elapsed:.0f} ms" if elapsed < 1000
                            else f"{elapsed / 1000:.2f} s")
 
             item = QListWidgetItem(
-                f"{preview}\n{entry['timestamp']}  •  {elapsed_str}"
+                f"{preview}\n{entry['timestamp']}  -  {elapsed_str}"
             )
             item.setData(Qt.ItemDataRole.UserRole, entry["sql"])
             item.setToolTip(entry["sql"])
@@ -115,13 +118,14 @@ class HistoryPanel(QWidget):
         self._save()
         self._refresh_list()
 
-    # ── Persistence ──────────────────────────────────────────────────── #
+    # -- Persistence ------------------------------------------------------ #
 
     def _save(self) -> None:
         try:
             self._settings.setValue(_HISTORY_KEY, json.dumps(self._entries))
-        except Exception:
-            pass  # History is a convenience feature — never fatal
+        except Exception as exc:
+            # History is a convenience feature -- never fatal, but log for diagnostics
+            log.debug("Failed to persist query history: %s", exc)
 
     def _load(self) -> list[dict]:
         raw = self._settings.value(_HISTORY_KEY, "[]")
@@ -129,6 +133,6 @@ class HistoryPanel(QWidget):
             data = json.loads(raw)
             if isinstance(data, list):
                 return data[:_MAX_ENTRIES]
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug("Failed to load query history (corrupt data?): %s", exc)
         return []

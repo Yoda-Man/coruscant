@@ -9,7 +9,38 @@ Author: Marwa Trust Mutemasango
 from __future__ import annotations
 
 from PySide6.QtWidgets import QTabBar, QMenu, QInputDialog
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+
+
+class EditorTabBar(QTabBar):
+    """
+    QTabBar for the editor QTabWidget.
+
+    Behaviour
+    ---------
+    Double-click a tab label → inline rename dialog.
+    Emits ``tab_manually_renamed(index)`` so MainWindow can mark that tab
+    as having a user-defined name (suppressing future auto-renames on save).
+    """
+
+    tab_manually_renamed: Signal = Signal(int)   # tab index that was renamed
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            idx = self.tabAt(event.position().toPoint())
+            if idx >= 0:
+                self._rename_tab(idx)
+                return
+        super().mouseDoubleClickEvent(event)
+
+    def _rename_tab(self, idx: int) -> None:
+        current = self.tabText(idx)
+        text, ok = QInputDialog.getText(
+            self, "Rename Tab", "Tab name:", text=current
+        )
+        if ok and text.strip():
+            self.setTabText(idx, text.strip())
+            self.tab_manually_renamed.emit(idx)
 
 
 class PinnableTabBar(QTabBar):

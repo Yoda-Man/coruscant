@@ -22,6 +22,7 @@ Author: Marwa Trust Mutemasango
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget, QSplitter,
@@ -35,13 +36,15 @@ from PySide6.QtGui import QAction, QKeySequence, QShortcut, QCloseEvent
 from coruscant import __version__, __app_name__
 from coruscant.core.database import DatabaseManager, QueryResult, CommandResult
 from coruscant.core.worker import QueryWorker
-from coruscant.core.sql import split_statements
+from coruscant.core.sql import split_statements, split_statements_with_positions
 from coruscant.ui.widgets.editor import EditorTab
 from coruscant.ui.widgets.results import ResultGrid, MessageResult, ExplainResult, ErrorResult
-from coruscant.ui.widgets.tab_bar import PinnableTabBar
+from coruscant.ui.widgets.tab_bar import PinnableTabBar, EditorTabBar
 from coruscant.ui.panels.schema import SchemaBrowser
 from coruscant.ui.panels.history import HistoryPanel
 from coruscant.ui.dialogs.connection import ConnectionDialog
+from coruscant.ui.dialogs.guide import ShortcutGuideDialog
+from coruscant.ui.dialogs.script_manager_dialog import ScriptManagerDialog
 import coruscant.utils.themes as themes
 
 log = logging.getLogger(__name__)
@@ -67,6 +70,9 @@ class MainWindow(QMainWindow):
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
         self._schema_words:   list[str]         = []
         self._current_connection_name = ""
+        # Run-all-tabs state
+        self._run_all_queue: list  = []
+        self._run_all_total: int   = 0
 
         self._build_toolbar()
         self._build_left_dock()
@@ -103,7 +109,8 @@ class MainWindow(QMainWindow):
         self._act_disconnect = action("Disconnect")
 
         # Query execution
-        self._act_execute   = action("▶  Execute",  "Execute (F5)", "F5")
+        self._act_execute   = action("▶  Execute",
+                                     "Execute current tab — selection or full  (Ctrl+Enter)")
         self._act_cancel    = action("⏹  Cancel",   "Cancel running query (Escape)", "Escape")
         self._act_explain   = action("Explain",     "EXPLAIN the first statement")
         self._act_explain_a = action("Explain+",    "EXPLAIN ANALYZE BUFFERS")
@@ -123,7 +130,7 @@ class MainWindow(QMainWindow):
         self._act_rollback = action("Rollback", "ROLLBACK the current transaction")
 
         # Theme
-        self._act_theme = action("🌙", "Toggle light / dark theme")
+        self._act_theme   = action("🌙",           "Toggle light / dark theme")
 
         # Wire signals
         self._act_connect.triggered.connect(self._on_connect)
@@ -165,7 +172,7 @@ class MainWindow(QMainWindow):
         tb.addWidget(QLabel("  Row limit: ", styleSheet="font-size: 11px;"))
         self._row_limit_spin = QSpinBox()
         self._row_limit_spin.setRange(0, 1_000_000)
-        self._row_limit_spin.setValue(1000)
+        self._row_limit_spin.setValue(100)
         self._row_limit_spin.setSpecialValueText("Unlimited")
         self._row_limit_spin.setFixedWidth(100)
         self._row_limit_spin.setToolTip("Maximum rows per SELECT result (0 = unlimited)")
@@ -244,6 +251,10 @@ class MainWindow(QMainWindow):
         self._schema_browser = SchemaBrowser(self._db)
         self._schema_browser.insert_sql.connect(self._on_schema_insert_sql)
         self._schema_browser.schema_loaded.connect(self._on_schema_loaded)
+        self._schema_browser.autocomplete_changed.connect(self._on_autocomplete_changed)
+        self._schema_browser.line_numbers_changed.connect(self._on_line_numbers_changed)
+        self._schema_browser.guide_requested.connect(self._on_guide_requested)
+        self._schema_browser.scripts_requested.connect(self._on_open_script_manager)
         self._left_splitter.addWidget(self._schema_browser)
 
         self._history_panel = HistoryPanel()
@@ -267,6 +278,11 @@ class MainWindow(QMainWindow):
         self._editor_tabs = QTabWidget()
         self._editor_tabs.setTabsClosable(True)
         self._editor_tabs.setMovable(True)
+        self._editor_tab_bar = EditorTabBar()
+        self._editor_tabs.setTabBar(self._editor_tab_bar)
+        self._editor_tab_bar.tab_manually_renamed.connect(
+            self._on_editor_tab_manually_renamed
+        )
         self._editor_tabs.tabCloseRequested.connect(self._close_editor_tab)
         self._editor_tabs.currentChanged.connect(self._on_editor_tab_changed)
         self._central_splitter.addWidget(self._editor_tabs)
@@ -284,6 +300,10 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Shift+Tab"), self, activated=self._prev_editor_tab)
         QShortcut(QKeySequence("Ctrl+W"),         self, activated=self._close_current_editor_tab)
         QShortcut(QKeySequence("Ctrl+T"),         self, activated=lambda: self._add_editor_tab())
+        # Query execution shortcuts
+        QShortcut(QKeySequence("F5"),             self, activated=self._on_run_all_tabs)
+        QShortcut(QKeySequence("Ctrl+F5"),        self, activated=self._on_execute_at_cursor)
+        QShortcut(QKeySequence("Ctrl+Return"),    self, activated=self._on_execute)
 
     # ================================================================== #
     #  Window lifecycle                                                    #
@@ -335,7 +355,12 @@ class MainWindow(QMainWindow):
         
         if self._schema_words:
             tab.update_completer_words(self._schema_words)
-            
+
+        ac_enabled = self._settings.value("settings/autocomplete", True, type=bool)
+        tab.set_autocomplete_enabled(ac_enabled)
+        ln_enabled = self._settings.value("settings/line_numbers", True, type=bool)
+        tab.set_line_numbers_enabled(ln_enabled)
+
         tab.editor.setFocus()
         return tab
 
@@ -564,8 +589,7 @@ class MainWindow(QMainWindow):
             return
 
         self._clear_unpinned_result_tabs()
-        _, tabs = self._current_result_widgets()
-        placeholder, _ = self._current_result_widgets()
+        placeholder, tabs = self._current_result_widgets()
         if tabs and tabs.count() == 0:
             if placeholder:
                 placeholder.show()
@@ -716,6 +740,11 @@ class MainWindow(QMainWindow):
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(content)
             self.statusBar().showMessage(f"Saved: {path}")
+            # Auto-rename the tab to the filename stem (unless the user has
+            # manually renamed it — in that case we leave their name alone)
+            tab_idx = self._editor_tabs.currentIndex()
+            if tab and not tab.property("manually_named"):
+                self._editor_tabs.setTabText(tab_idx, Path(path).stem)
         except OSError as exc:
             StyledMessageBox.critical(self, "Save File", str(exc))
 
@@ -756,70 +785,173 @@ class MainWindow(QMainWindow):
             if isinstance(tab, EditorTab):
                 tab.update_completer_words(words)
 
-    # ================================================================== #
-    #  Worker result handlers                                              #
-    # ================================================================== #
+    def _on_autocomplete_changed(self, enabled: bool) -> None:
+        for i in range(self._editor_tabs.count()):
+            tab = self._editor_tabs.widget(i)
+            if isinstance(tab, EditorTab):
+                tab.set_autocomplete_enabled(enabled)
 
-    def _on_results(self, results: list) -> None:
-        self._show_result_area()
+    def _on_line_numbers_changed(self, enabled: bool) -> None:
+        for i in range(self._editor_tabs.count()):
+            tab = self._editor_tabs.widget(i)
+            if isinstance(tab, EditorTab):
+                tab.set_line_numbers_enabled(enabled)
 
-        result_count  = 0
-        total_elapsed = 0.0
+    def _on_editor_tab_manually_renamed(self, idx: int) -> None:
+        """Mark this editor tab so auto-naming on save will not override it."""
+        tab = self._editor_tabs.widget(idx)
+        if tab:
+            tab.setProperty("manually_named", True)
 
-        for item in results:
-            elapsed_ms     = item.elapsed_ms
-            total_elapsed += elapsed_ms
+    def _on_guide_requested(self) -> None:
+        """Open the quick-reference guide dialog."""
+        dlg = ShortcutGuideDialog(self)
+        dlg.exec()
 
-            if isinstance(item, QueryResult):
-                grid  = ResultGrid(item.columns, item.rows,
-                                   label=item.label, truncated=item.truncated)
-                title = f"{item.label}  ({elapsed_ms:.0f} ms, {len(item.rows):,} rows)"
-                self._add_result_tab(grid, title)
-                result_count += 1
-            elif isinstance(item, CommandResult):
-                msg   = MessageResult(item.message, item.label)
-                title = f"{item.label}  ({elapsed_ms:.0f} ms)"
-                self._add_result_tab(msg, title)
+    def _on_open_script_manager(self) -> None:
+        """Open the Support Script Manager dialog."""
+        dlg = ScriptManagerDialog(self)
+        dlg.script_selected.connect(self._on_script_manager_load)
+        dlg.exec()
 
-        _, tabs = self._current_result_widgets()
-        if tabs and tabs.count() > 0:
-            tabs.setCurrentIndex(0)
-
-        # Add to history
+    def _on_script_manager_load(self, sql: str) -> None:
+        """Insert a script from the Script Manager into the active editor."""
         tab = self._current_editor_tab()
         if tab:
-            full_sql = tab.editor.toPlainText().strip()
-            if full_sql:
-                self._history_panel.add_entry(full_sql, total_elapsed)
+            tab.set_sql(sql)
+            self.statusBar().showMessage("Script loaded from Script Manager.")
 
+    def suggest_scripts_for_error(self, error_code: str, error_message: str = "") -> None:
+        """
+        Open the Script Manager pre-searched for *error_code*.
+        Called automatically when a query fails with a recognisable SQLSTATE.
+        """
+        from coruscant.core.script_manager import ScriptKnowledgeGraph
+        g = ScriptKnowledgeGraph.load()
+        if g.stats().script_count == 0:
+            return   # nothing to suggest
+        dlg = ScriptManagerDialog(self)
+        dlg.script_selected.connect(self._on_script_manager_load)
+        dlg.search_for_error(error_code, error_message)
+        dlg.exec()
+
+
+    # ================================================================== #
+    #  Run-all and execute-at-cursor                                       #
+    # ================================================================== #
+
+    def _on_run_all_tabs(self) -> None:
+        """F5 — execute every non-empty editor tab sequentially."""
+        if not (self._db.is_connected or self._db.has_last_params):
+            self.statusBar().showMessage("Not connected — cannot execute.")
+            return
+        if self._worker and self._worker.isRunning():
+            self.statusBar().showMessage("A query is already running.")
+            return
+
+        self._run_all_queue = []
+        for i in range(self._editor_tabs.count()):
+            tab = self._editor_tabs.widget(i)
+            if isinstance(tab, EditorTab):
+                sql = tab.editor.toPlainText().strip()
+                if sql:
+                    self._run_all_queue.append((i, tab, sql))
+
+        if not self._run_all_queue:
+            self.statusBar().showMessage("No SQL to execute across tabs.")
+            return
+
+        self._run_all_total = len(self._run_all_queue)
+        log.info("Run-all started  tabs=%d", self._run_all_total)
+        self._advance_run_all()
+
+    def _advance_run_all(self) -> None:
+        """Pop the next tab from the queue and run it; stop when empty."""
+        if not self._run_all_queue:
+            self.statusBar().showMessage(
+                f"All {self._run_all_total} tab(s) executed successfully."
+            )
+            self._update_ui_state()
+            return
+
+        tab_idx, tab, sql = self._run_all_queue.pop(0)
+        self._editor_tabs.setCurrentIndex(tab_idx)
+        done = self._run_all_total - len(self._run_all_queue)
         self.statusBar().showMessage(
-            f"Executed {len(results)} statement(s)  –  "
-            f"{result_count} result set(s)  –  "
-            f"total {total_elapsed:.0f} ms"
+            f"Executing tab {done}/{self._run_all_total}: "
+            f"{self._editor_tabs.tabText(tab_idx)}..."
         )
 
-    def _on_explain_results(self, results: list, title: str) -> None:
-        for item in results:
-            if isinstance(item, QueryResult) and item.rows:
-                plan_text = "\n".join(str(row[0]) for row in item.rows)
-                self._show_result_area()
-                idx = self._add_result_tab(ExplainResult(plan_text, title), title)
-                _, tabs = self._current_result_widgets()
-                if tabs:
-                    tabs.setCurrentIndex(idx)
-                self.statusBar().showMessage("EXPLAIN complete.")
-                return
+        self._clear_unpinned_result_tabs()
+        placeholder, tabs = self._current_result_widgets()
+        if tabs and placeholder and tabs.count() == 0:
+            placeholder.show()
+            tabs.hide()
 
-    def _on_query_error(self, message: str) -> None:
-        """Show the error inline as a result tab — no blocking modal."""
-        self._show_result_area()
-        idx = self._add_result_tab(ErrorResult(message), "⚠ Error")
-        _, tabs = self._current_result_widgets()
-        if tabs:
-            tabs.setCurrentIndex(idx)
-        self.statusBar().showMessage("Query failed — see Error tab.")
+        self._worker = QueryWorker(
+            self._db, sql,
+            row_limit=self._row_limit_spin.value(),
+            params=tab.get_params() or None,
+            parent=self,
+        )
+        self._worker.finished.connect(self._on_results)
+        self._worker.error.connect(self._on_query_error)
+        self._worker.cancelled.connect(self._on_query_cancelled)
+        self._worker.finished.connect(lambda _: self._advance_run_all())
+        self._worker.error.connect(lambda _: self._run_all_queue.clear())
+        self._worker.cancelled.connect(lambda: self._run_all_queue.clear())
         self._update_ui_state()
+        self._worker.start()
 
-    def _on_query_cancelled(self) -> None:
-        self.statusBar().showMessage("Query cancelled.")
+    def _on_execute_at_cursor(self) -> None:
+        """Ctrl+F5 — execute only the SQL statement the cursor is inside."""
+        tab = self._current_editor_tab()
+        if not tab:
+            return
+        if not (self._db.is_connected or self._db.has_last_params):
+            self.statusBar().showMessage("Not connected — cannot execute.")
+            return
+        if self._worker and self._worker.isRunning():
+            return
+
+        full_sql   = tab.editor.toPlainText()
+        cursor_pos = tab.editor.textCursor().position()
+        sql        = self._statement_at_cursor(full_sql, cursor_pos)
+
+        if not sql:
+            self.statusBar().showMessage("No statement found at cursor position.")
+            return
+
+        self._clear_unpinned_result_tabs()
+        placeholder, tabs = self._current_result_widgets()
+        if tabs and placeholder and tabs.count() == 0:
+            placeholder.show()
+            tabs.hide()
+        self.statusBar().showMessage("Executing statement at cursor...")
+
+        self._worker = QueryWorker(
+            self._db, sql,
+            row_limit=self._row_limit_spin.value(),
+            params=tab.get_params() or None,
+            parent=self,
+        )
+        self._worker.finished.connect(self._on_results)
+        self._worker.error.connect(self._on_query_error)
+        self._worker.cancelled.connect(self._on_query_cancelled)
+        self._worker.finished.connect(lambda _: self._update_ui_state())
+        self._worker.error.connect(lambda _: self._update_ui_state())
+        self._worker.cancelled.connect(self._update_ui_state)
         self._update_ui_state()
+        self._worker.start()
+
+    @staticmethod
+    def _statement_at_cursor(sql: str, pos: int) -> str | None:
+        """Return the statement containing cursor position *pos*."""
+        stmts = split_statements_with_positions(sql)
+        if not stmts:
+            return None
+        for start, end, stmt in stmts:
+            if start <= pos < end:
+                return stmt
+        # Fallback: nearest statement
+        return min(stmts, key=lambda s: min(abs(pos - s[0]), abs(pos - s[1])))[2]

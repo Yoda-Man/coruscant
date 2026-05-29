@@ -12,15 +12,11 @@
 A lightweight, open-source desktop SQL IDE for PostgreSQL built with Python and PySide6.  
 Run multiple statements in one pass, browse your schema, manage transactions, search your script library, and export results — all in a single window.
 
----
-
 ## Why Coruscant Exists
 
 pgAdmin has a long-standing limitation: when a script contains multiple `SELECT` statements, only the last result is shown. Earlier result sets are silently discarded.
 
 Coruscant solves this directly. Every `SELECT` produces its own dedicated, persistent result tab. Run twenty statements, inspect any of the twenty results, pin the ones you want to keep, and compare them side by side — all without leaving the window.
-
----
 
 ## What Makes This Project Good
 
@@ -30,15 +26,13 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Background execution with real cancellation:** queries run in a `QThread` worker; the UI never freezes. Cancel sends `pg_cancel_backend()` to PostgreSQL — the *server* stops the query, not just the client.
 
-**Inline errors, no modal dialogs:** failed statements open an `ErrorResult` tab alongside successful ones. Read the error, fix the SQL, re-run — your other results stay visible.
+**Inline errors, no modal dialogs:** failed statements open an `ErrorResult` tab alongside successful ones. Read the error, fix the SQL, re-run; your other results stay visible.
 
 **Transactional DDL:** switching off Auto-commit lets you `CREATE TABLE`, inspect the result, and roll the whole thing back. PostgreSQL supports this; Coruscant exposes it properly.
 
 **Parameterised queries done right:** values pass through `cursor.mogrify()` — never string-concatenated. SQL injection is structurally impossible when the Parameters panel is used.
 
-**Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat" — entirely offline, no LLM required.
-
----
+**Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat", entirely offline, no LLM required.
 
 ## Table of Contents
 
@@ -65,8 +59,6 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 21. [Known Limitations](#known-limitations)
 22. [Changelog](#changelog)
 
----
-
 ## Requirements
 
 **Pre-built binaries** require no Python. Only a running PostgreSQL server (9.x – 16+) is needed.
@@ -80,8 +72,6 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 | psycopg2-binary | 2.9 | PostgreSQL adapter |
 | sqlparse | 0.4 | Optional — needed for Format SQL only |
 | networkx | 2.6 | Required for Support Script Manager |
-
----
 
 ## Installation
 
@@ -116,8 +106,6 @@ pip install -r requirements.txt
 python main.py
 ```
 
----
-
 ## Building a Standalone Executable
 
 ```bat
@@ -128,8 +116,6 @@ bash distribution/build_linux.sh  # Linux  → distribution\dist\Coruscant
 
 All scripts install dependencies and invoke PyInstaller against `distribution/coruscant.spec`. A GitHub Actions workflow triggers on version tags and publishes releases for all three platforms.
 
----
-
 ## Quick Start
 
 1. Launch Coruscant (`python main.py` or double-click the binary).
@@ -137,8 +123,6 @@ All scripts install dependencies and invoke PyInstaller against `distribution/co
 3. Type SQL in the editor.
 4. Press **Ctrl+Enter** to execute the current tab.
 5. Results appear in tabs below the editor.
-
----
 
 ## Architecture
 
@@ -179,8 +163,6 @@ coruscant/
 
 **Dependency rules:** `core` has zero GUI imports. `ui` depends on `core` and `utils`. `core` never imports from `ui`.
 
----
-
 ## Connecting to a Database
 
 Click **Connections** to open the connection manager. Import a pgAdmin JSON export or create profiles manually. Double-click a profile to connect.
@@ -193,8 +175,6 @@ Click **Connections** to open the connection manager. Import a pgAdmin JSON expo
 | `verify-full` | SSL + verify certificate + hostname |
 
 Passwords are base64-encoded in the OS settings store. Not encrypted — treat the store as sensitive.
-
----
 
 ## The Editor
 
@@ -217,8 +197,6 @@ Each editor tab contains a **syntax-highlighted SQL editor** with:
 
 Saving a script (💾) **auto-renames the tab** to the filename stem. Manual renames are never overridden.
 
----
-
 ## Running Queries
 
 | Action | Shortcut | Behaviour |
@@ -231,8 +209,6 @@ Saving a script (💾) **auto-renames the tab** to the filename stem. Manual ren
 The **Row limit** spinner (default 100, `0` = Unlimited) caps rows per `SELECT`.  
 A yellow banner appears when results are truncated.
 
----
-
 ## Result Tabs
 
 | Statement | Tab content |
@@ -243,18 +219,14 @@ A yellow banner appears when results are truncated.
 | Error | **ErrorResult** — full scrollable error |
 
 - **Double-click a cell** → Cell Content Viewer (ideal for JSON, XML, long text)  
-- **Filter box** → live row filter, `setRowHidden` — fast even on large sets  
+- **Filter box** → live row filter, `setRowHidden`, fast even on large sets  
 - **Ctrl+C** → copy selected rows as TSV; **Ctrl+Shift+C** → with headers  
 - **Right-click a result tab** → Pin / Unpin (📌 pinned tabs survive next Execute)
-
----
 
 ## Transaction Mode
 
 **Auto-commit on** (default): every statement commits immediately.  
 **Auto-commit off**: use the **Commit** / **Rollback** buttons. DDL is fully transactional.
-
----
 
 ## Schema Browser
 
@@ -271,8 +243,6 @@ public (schema)
 - **Right-click a table** → SELECT / UPDATE / DELETE script templates (all columns pre-filled)  
 - **⚙ Settings** → toggle Auto-complete, Line numbers, Cell-viewer auto-close  
 - **? Guide** → opens the full in-app quick-reference guide
-
----
 
 ## Support Script Manager
 
@@ -307,13 +277,9 @@ Double-click any result to load the script directly into the active editor tab.
 
 See [`docs/SCRIPT_MANAGER.md`](docs/SCRIPT_MANAGER.md) for the full reference.
 
----
-
 ## Query History
 
 The **Query History** panel stores the last 100 queries with timestamps and elapsed times. Persisted across sessions. Double-click any entry to reload it into the active editor tab.
-
----
 
 ## Parameterised Queries
 
@@ -323,9 +289,7 @@ Use `%(name)s` placeholders in SQL. Open **Parameters ▸** in the editor header
 SELECT * FROM users WHERE id = %(user_id)s AND active = %(active)s;
 ```
 
-Values are substituted via `cursor.mogrify()` — SQL injection is structurally impossible.
-
----
+Values are substituted via `cursor.mogrify()`; SQL injection is structurally impossible.
 
 ## EXPLAIN / EXPLAIN ANALYZE
 
@@ -336,15 +300,11 @@ Values are substituted via `cursor.mogrify()` — SQL injection is structurally 
 
 The plan appears in an **ExplainResult** tab. Only the first statement is explained.
 
----
-
 ## Exporting Results
 
 Each ResultGrid has **Export CSV** and **Export JSON** buttons.  
 CSV: UTF-8, header row, NULL → empty string.  
 JSON: array of objects; dates, decimals, and bytes are serialised.
-
----
 
 ## Keyboard Shortcuts
 
@@ -362,13 +322,9 @@ JSON: array of objects; dates, decimals, and bytes are serialised.
 | **Ctrl+C** *(result grid)* | Copy selected rows as TSV |
 | **Ctrl+Shift+C** *(result grid)* | Copy selected rows with headers |
 
----
-
 ## Themes
 
 Click **🌙 / ☀** to toggle dark / light theme. Persists across sessions.
-
----
 
 ## Logging
 
@@ -389,16 +345,12 @@ Enable verbose logging: `CORUSCANT_LOG_LEVEL=DEBUG python main.py`
 | `ERROR` | Connection failures, query errors, schema errors |
 | `DEBUG` | Full SQL (120 chars), per-statement row counts and elapsed time |
 
----
-
 ## Security Notes
 
-- Passwords are base64-encoded in the OS settings store — not encrypted. Treat the store as sensitive.
+- Passwords are base64-encoded in the OS settings store, not encrypted. Treat the store as sensitive.
 - Use `verify-full` SSL for production connections over untrusted networks.
-- The Script Manager never executes uploaded scripts during indexing — analysis is text-only.
+- The Script Manager never executes uploaded scripts during indexing; analysis is text-only.
 - No telemetry, no analytics, no external network calls from any part of the application.
-
----
 
 ## Known Limitations
 
@@ -408,8 +360,6 @@ Enable verbose logging: `CORUSCANT_LOG_LEVEL=DEBUG python main.py`
 | Single connection | All editor tabs share one PostgreSQL connection |
 | No `.pgpass` support | Connection parameters must be entered manually |
 | Script Manager graph | Built with NetworkX; requires `pip install networkx>=2.6` |
-
----
 
 ## Changelog
 

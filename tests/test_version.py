@@ -3,7 +3,7 @@ import coruscant
 
 
 def test_version():
-    assert coruscant.__version__ == "1.0.0"
+    assert coruscant.__version__ == "1.0.1"
 
 
 def test_author():
@@ -68,36 +68,31 @@ def test_ui_modules_parse_cleanly():
         )
 
 
-def test_main_window_has_required_methods():
+def test_main_window_signal_handlers_all_defined():
     """
-    Verify that the methods wired up in _build_shortcuts are actually
-    defined on MainWindow — the exact failure mode seen in the crash reports.
+    For every `some_signal.connect(self.method_name)` call in main_window.py,
+    verify that method_name is actually defined in the same file.
+
+    This is the exact check that would have caught the v1.0.0 crash where
+    _on_results, _on_query_error, _on_query_cancelled, and _on_explain_results
+    were deleted but still referenced in .connect() calls.
+
+    Uses AST — no Qt import required.
     """
     import ast, os
+
     path = os.path.join(os.path.dirname(__file__), '..', 'coruscant', 'ui', 'main_window.py')
-    src = open(path, encoding='utf-8').read()
+    src  = open(path, encoding='utf-8').read()
     tree = ast.parse(src)
 
-    defined = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
-            defined.add(node.name)
+    # Collect every method defined anywhere in the file.
+    defined = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
 
-    required = [
-        '_on_run_all_tabs',
-        '_advance_run_all',
-        '_on_execute_at_cursor',
-        '_statement_at_cursor',
-        '_on_guide_requested',
-        '_on_open_script_manager',
-        '_on_script_manager_load',
-        '_on_autocomplete_changed',
-        '_on_line_numbers_changed',
-        '_on_editor_tab_manually_renamed',
-    ]
-    missing = [m for m in required if m not in defined]
-    if missing:
-        raise AssertionError(
-            f"MainWindow is missing {len(missing)} required method(s): "
-            + ", ".join(missing)
-        )
+    # Walk the AST looking for expr.connect(self.X) or expr.connect(self.X)
+    # patterns. We capture the attribute name whenever the sole positional
+    # argument to a .connect() call is a self.attr reference.
+    referenced: dict[str, int] = {}  # m

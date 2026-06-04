@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -944,3 +944,21 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 ---
 
 *Author: Marwa Trust Mutemasango*
+
+---
+
+## What's New in 1.0.1
+
+**Version 1.0.1** is a stability and reliability release with no new features. All changes are bug fixes and test coverage improvements.
+
+### Bug Fixes
+
+- **Query execution crash (regression from 1.0.0)** — `_on_results`, `_on_query_error`, `_on_query_cancelled`, and `_on_explain_results` were accidentally removed from `MainWindow`, causing a crash every time a query was executed. These handlers are now restored.
+- **Connection merge counter** — `merge_connections()` was incrementing the `updated` counter even when a connection had not actually changed. The counter now only increments on genuine updates.
+- **Script Ingester save path** — `ScriptIngester.ingest_zip()` always wrote the knowledge graph to the default location. An optional `save_path` parameter now lets callers specify an alternative path.
+- **Run-all concurrency** — `_on_run_all_tabs()` no longer starts a new run-all while a worker is already in flight; it cancels the previous worker first.
+- **Zombie-detection ping** — the lightweight connection health ping is now skipped if the connection was active within the last 30 seconds, reducing unnecessary round-trips on rapid successive queries.
+
+### Test Suite
+
+The automated test suite has grown from approximately 40 passing tests to **416 tests across 9 test files**, providing much broader regression coverage for core logic, UI parsing, and the script manager.

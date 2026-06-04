@@ -276,3 +276,170 @@ class TestSavedConnectionKey:
         import pytest, json
         with pytest.raises(ValueError, match="pgAdmin"):
             parse_pgadmin_export_text(json.dumps({"NoServersKey": {}}))
+
+
+# ---------------------------------------------------------------------------
+# SavedConnection.to_dict / from_dict / connect_params
+# ---------------------------------------------------------------------------
+
+class TestSavedConnectionToDict:
+    def test_to_dict_returns_dict(self):
+        from coruscant.core.connections import SavedConnection
+        c = SavedConnection(name="T", host="h", database="db", user="u")
+        assert isinstance(c.to_dict(), dict)
+
+    def test_to_dict_round_trips_via_from_dict(self):
+        from coruscant.core.connections import SavedConnection
+        c = SavedConnection(name="Local", host="localhost", port=5433,
+                            database="app", user="pguser", password="",
+                            ssl_mode="require", group="G")
+        d = c.to_dict()
+        c2 = SavedConnection.from_dict(d)
+        assert c2.host == "localhost"
+        assert c2.port == 5433
+        assert c2.ssl_mode == "require"
+        assert c2.group == "G"
+
+    def test_to_dict_normalises_ssl_mode(self):
+        from coruscant.core.connections import SavedConnection
+        c = SavedConnection(name="T", host="h", database="db", user="u",
+                            ssl_mode="REQUIRE")
+        # to_dict calls normalise_ssl_mode
+        d = c.to_dict()
+        assert d["ssl_mode"] == "require"
+
+    def test_to_dict_port_is_int(self):
+        from coruscant.core.connections import SavedConnection
+        c = SavedConnection(name="T", host="h", database="db", user="u", port=5433)
+        d = c.to_dict()
+        assert isinstance(d["port"], int)
+
+    def test_from_dict_accepts_dbname_key(self):
+        from coruscant.core.connections import SavedConnection
+        d = {"host": "h", "dbname": "mydb", "user": "u"}
+        c = SavedConnection.from_dict(d)
+        assert c.database == "mydb"
+
+    def test_from_dict_accepts_username_key(self):
+        from coruscant.core.connections import SavedConnection
+        d = {"host": "h", "database": "db", "username": "alice"}
+        c = SavedConnection.from_dict(d)
+        assert c.user == "alice"
+
+    def test_from_dict_accepts_sslmode_key(self):
+        from coruscant.core.connections import SavedConnection
+        d = {"host": "h", "database": "db", "user": "u", "sslmode": "require"}
+        c = SavedConnection.from_dict(d)
+        assert c.ssl_mode == "require"
+
+    def test_from_dict_missing_host_gives_empty_host(self):
+        from coruscant.core.connections import SavedConnection
+        d = {"database": "db", "user": "u"}
+        c = SavedConnection.from_dict(d)
+        assert c.host == ""
+
+
+class TestSavedConnectionConnectParams:
+    def test_connect_params_keys(self):
+        from coruscant.core.connections import SavedConnection
+        c = SavedConnection(name="T", host="h", port=5432, database="db",
+                            user="u", password="pw", ssl_mode="prefer")
+        p = c.connect_params()
+        assert set(p.keys()) == {"host", "port", "database", "user", "password", "ssl_mode"}
+
+    def test_connect_params_values(self):
+        from coruscant.core.connections import SavedConnection
+        c = SavedConnection(name="T", host="myhost", port=5433, database="mydb",
+                            user="myuser", password="mypw", ssl_mode="require")
+        p = c.connect_params()
+        assert p["host"] == "myhost"
+        assert p["port"] == 5433
+        assert p["ssl_mode"] == "require"
+
+
+# ---------------------------------------------------------------------------
+# _encode_password / _decode_password
+# ---------------------------------------------------------------------------
+
+class TestPasswordEncoding:
+    def test_encode_decode_round_trip(self):
+        from coruscant.core.connections import _encode_password, _decode_password
+        pw = "super$ecret!123"
+        assert _decode_password(_encode_password(pw)) == pw
+
+    def test_encode_empty_string(self):
+        from coruscant.core.connections import _encode_password, _decode_password
+        assert _decode_password(_encode_password("")) == ""
+
+    def test_decode_bad_data_returns_input(self):
+        from coruscant.core.connections import _decode_password
+        # non-base64 input → falls back to returning input unchanged
+        result = _decode_password("###not base64###")
+        assert isinstance(result, str)
+
+    def test_encode_unicode_password(self):
+        from coruscant.core.connections import _encode_password, _decode_password
+        pw = "pässwörd"
+        assert _decode_password(_encode_password(pw)) == pw
+
+
+# ---------------------------------------------------------------------------
+# parse_pgadmin_export (dict form)
+# ---------------------------------------------------------------------------
+
+class TestParsePageadminExport:
+    def test_multiple_servers(self):
+        import json
+        from coruscant.core.connections import parse_pgadmin_export_text
+        raw = json.dumps({
+            "Servers": {
+                "1": {"Name": "A", "Host": "host1", "Port": 5432,
+                      "MaintenanceDB": "postgres", "Username": "u1"},
+                "2": {"Name": "B", "Host": "host2", "Port": 5433,
+                      "MaintenanceDB": "mydb",     "Username": "u2"},
+            }
+        })
+        conns = parse_pgadmin_export_text(raw)
+        assert len(conns) == 2
+        hosts = {c.host for c in conns}
+        assert hosts == {"host1", "host2"}
+
+    def test_server_without_host_skipped(self):
+        import json
+        from coruscant.core.connections import parse_pgadmin_export_text
+        raw = json.dumps({
+            "Servers": {
+                "1": {"Name": "NoHost", "Host": "", "Port": 5432,
+                      "MaintenanceDB": "db", "Username": "u"},
+            }
+        })
+        conns = parse_pgadmin_export_text(raw)
+        assert conns == []
+
+    def test_result_sorted_by_group_then_name(self):
+        import json
+        from coruscant.core.connections import parse_pgadmin_export_text
+        raw = json.dumps({
+            "Servers": {
+                "1": {"Name": "Zeta", "Group": "Beta", "Host": "h1", "Port": 5432,
+                      "MaintenanceDB": "db", "Username": "u"},
+                "2": {"Name": "Alpha", "Group": "Alpha", "Host": "h2", "Port": 5432,
+                      "MaintenanceDB": "db", "Username": "u"},
+            }
+        })
+        conns = parse_pgadmin_export_text(raw)
+        assert conns[0].group == "Alpha"
+
+    def test_non_dict_server_entry_skipped(self):
+        import json
+        from coruscant.core.connections import parse_pgadmin_export_text
+        raw = json.dumps({
+            "Servers": {
+                "1": "not a dict",
+                "2": {"Name": "Good", "Host": "host", "Port": 5432,
+                      "MaintenanceDB": "db", "Username": "u"},
+            }
+        })
+        conns = parse_pgadmin_export_text(raw)
+        assert len(conns) == 1
+        assert conns[0].host == "host"

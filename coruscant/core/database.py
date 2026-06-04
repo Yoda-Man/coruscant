@@ -89,6 +89,7 @@ class DatabaseManager:
     def __init__(self) -> None:
         self._conn: psycopg2.extensions.connection | None = None
         self._last_params: dict | None = None
+        self._last_query_time: float = 0.0
 
     # ------------------------------------------------------------------ #
     #  Connection lifecycle                                                #
@@ -170,16 +171,17 @@ class DatabaseManager:
         # If we have a connection, check if it's actually alive (zombie detection).
         # We perform a lightweight ping to detect server-side closure (e.g. idle timeout).
         if self._conn is not None and self._conn.closed == 0:
-            try:
-                with self._conn.cursor() as cur:
-                    cur.execute("SELECT 1")
-            except (psycopg2.OperationalError, psycopg2.InterfaceError):
-                log.info("Existing connection found to be dead (zombie); resetting.")
+            if time.monotonic() - self._last_query_time >= 30.0:
                 try:
-                    self._conn.close()
-                except Exception:
-                    pass
-                self._conn = None
+                    with self._conn.cursor() as cur:
+                        cur.execute("SELECT 1")
+                except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                    log.info("Existing connection found to be dead (zombie); resetting.")
+                    try:
+                        self._conn.close()
+                    except Exception:
+                        pass
+                    self._conn = None
 
         if self.is_connected:
             return
@@ -335,6 +337,7 @@ class DatabaseManager:
             raise
 
         log.info("Executed %d statement(s) successfully", len(results))
+        self._last_query_time = time.monotonic()
         return results
 
     # ------------------------------------------------------------------ #

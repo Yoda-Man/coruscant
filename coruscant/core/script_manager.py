@@ -745,6 +745,7 @@ class ScriptIngester:
         existing_graph: ScriptKnowledgeGraph | None = None,
         progress_cb: Callable[[str, int, int], None] | None = None,
         merge: bool = True,
+        save_path: Path | None = None,
     ) -> ScriptKnowledgeGraph:
         """
         Parse all .sql files in *zip_path* and return a built graph.
@@ -777,7 +778,7 @@ class ScriptIngester:
 
         cb("Building knowledge graph…", 0, 1)
         graph.build(progress_cb)
-        graph.save()
+        graph.save(save_path)
         return graph
 
     @staticmethod

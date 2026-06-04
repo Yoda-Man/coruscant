@@ -675,6 +675,69 @@ class MainWindow(QMainWindow):
             StyledMessageBox.critical(self, "Rollback Error", str(exc))
         self._update_ui_state()
 
+    def _on_results(self, results: list) -> None:
+        self._clear_unpinned_result_tabs()
+        self._show_result_area()
+
+        result_count  = 0
+        total_elapsed = 0.0
+
+        for item in results:
+            elapsed_ms     = item.elapsed_ms
+            total_elapsed += elapsed_ms
+
+            if isinstance(item, QueryResult):
+                grid  = ResultGrid(item.columns, item.rows,
+                                   label=item.label, truncated=item.truncated)
+                title = f"{item.label}  ({elapsed_ms:.0f} ms, {len(item.rows):,} rows)"
+                self._add_result_tab(grid, title)
+                result_count += 1
+            elif isinstance(item, CommandResult):
+                msg   = MessageResult(item.message, item.label)
+                title = f"{item.label}  ({elapsed_ms:.0f} ms)"
+                self._add_result_tab(msg, title)
+
+        _, tabs = self._current_result_widgets()
+        if tabs and tabs.count() > 0:
+            tabs.setCurrentIndex(0)
+
+        tab = self._current_editor_tab()
+        if tab:
+            full_sql = tab.editor.toPlainText().strip()
+            if full_sql:
+                self._history_panel.add_entry(full_sql, total_elapsed)
+
+        self.statusBar().showMessage(
+            f"Executed {len(results)} statement(s)  –  "
+            f"{result_count} result set(s)  –  "
+            f"total {total_elapsed:.0f} ms"
+        )
+
+    def _on_explain_results(self, results: list, title: str) -> None:
+        for item in results:
+            if isinstance(item, QueryResult) and item.rows:
+                plan_text = "\n".join(str(row[0]) for row in item.rows)
+                self._show_result_area()
+                idx = self._add_result_tab(ExplainResult(plan_text, title), title)
+                _, tabs = self._current_result_widgets()
+                if tabs:
+                    tabs.setCurrentIndex(idx)
+                self.statusBar().showMessage("EXPLAIN complete.")
+                return
+
+    def _on_query_error(self, message: str) -> None:
+        self._show_result_area()
+        idx = self._add_result_tab(ErrorResult(message), "⚠ Error")
+        _, tabs = self._current_result_widgets()
+        if tabs:
+            tabs.setCurrentIndex(idx)
+        self.statusBar().showMessage("Query failed — see Error tab.")
+        self._update_ui_state()
+
+    def _on_query_cancelled(self) -> None:
+        self.statusBar().showMessage("Query cancelled.")
+        self._update_ui_state()
+
     def _on_format_sql(self) -> None:
         try:
             import sqlparse
@@ -846,8 +909,8 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Not connected — cannot execute.")
             return
         if self._worker and self._worker.isRunning():
-            self.statusBar().showMessage("A query is already running.")
-            return
+            self._db.cancel()
+            self._run_all_queue.clear()
 
         self._run_all_queue = []
         for i in range(self._editor_tabs.count()):

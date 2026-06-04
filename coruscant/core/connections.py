@@ -140,8 +140,9 @@ def merge_connections(
             current = by_key[conn.key]
             if current.password and not conn.password:
                 conn.password = current.password
-            by_key[conn.key] = conn
-            updated += 1
+            if conn.to_dict() != current.to_dict():
+                by_key[conn.key] = conn
+                updated += 1
         else:
             by_key[conn.key] = conn
             added += 1

@@ -205,6 +205,7 @@ class QADialog(QDialog):
         self._tree.setColumnWidth(1, 160)
         self._tree.setColumnWidth(2, 110)
         self._tree.currentItemChanged.connect(self._on_selection_changed)
+        self._tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         splitter.addWidget(self._tree)
 
         # Right pane: fix SQL + action buttons
@@ -349,6 +350,83 @@ class QADialog(QDialog):
             group_item.setExpanded(True)
 
     # ── Slots ─────────────────────────────────────────────────────────── #
+
+    def _on_item_double_clicked(
+        self, item: QTreeWidgetItem, _column: int
+    ) -> None:
+        """Open a detail dialog so the user can read and copy the full message."""
+        finding: QAFinding | None = item.data(0, Qt.ItemDataRole.UserRole)
+        if finding is None:
+            return  # group-header row – nothing to show
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Finding Detail")
+        dlg.setMinimumWidth(560)
+        dlg.setStyleSheet(
+            "QDialog { background: #0d0d1a; color: #cdd6f4; }"
+            "QLabel  { color: #cdd6f4; font-size: 13px; }"
+            "QTextEdit { background: #1e1e2e; color: #cdd6f4; border: 1px solid #313244;"
+            "            font-family: monospace; font-size: 13px; }"
+            "QPushButton { background: #313244; color: #cdd6f4; border: 1px solid #45475a;"
+            "              padding: 5px 14px; border-radius: 4px; }"
+            "QPushButton:hover { background: #45475a; }"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setSpacing(8)
+
+        # Meta row
+        severity_icon = {"WARNING": "⚠", "ERROR": "✖", "INFO": "ℹ"}.get(finding.severity, "")
+        meta_parts = [f"{severity_icon} <b>{finding.severity}</b>"]
+        if finding.table:
+            meta_parts.append(f"Table: <b>{finding.table}</b>")
+        if finding.column:
+            meta_parts.append(f"Column: <b>{finding.column}</b>")
+        meta_lbl = QLabel("  ·  ".join(meta_parts))
+        meta_lbl.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(meta_lbl)
+
+        # Full message (selectable, read-only)
+        msg_edit = QTextEdit()
+        msg_edit.setReadOnly(True)
+        msg_edit.setPlainText(finding.message)
+        msg_edit.setFixedHeight(100)
+        layout.addWidget(msg_edit)
+
+        # Fix SQL (if any)
+        if finding.fix_sql:
+            fix_lbl = QLabel("<b>Suggested Fix SQL:</b>")
+            fix_lbl.setTextFormat(Qt.TextFormat.RichText)
+            layout.addWidget(fix_lbl)
+            fix_edit = QTextEdit()
+            fix_edit.setReadOnly(True)
+            fix_edit.setPlainText(finding.fix_sql)
+            fix_edit.setFixedHeight(90)
+            layout.addWidget(fix_edit)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        copy_msg_btn = QPushButton("📋  Copy Message")
+        copy_msg_btn.clicked.connect(
+            lambda: QApplication.clipboard().setText(finding.message)
+        )
+        btn_row.addWidget(copy_msg_btn)
+
+        if finding.fix_sql:
+            copy_sql_btn = QPushButton("📋  Copy SQL")
+            copy_sql_btn.clicked.connect(
+                lambda: QApplication.clipboard().setText(finding.fix_sql)
+            )
+            btn_row.addWidget(copy_sql_btn)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+
+        layout.addLayout(btn_row)
+        dlg.exec()
 
     def _on_selection_changed(
         self, current: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None

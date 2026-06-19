@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -53,15 +53,26 @@
    - 9.2 [Generating Scripts from a Table](#92-generating-scripts-from-a-table)
    - 9.3 [Inserting a SELECT Statement](#93-inserting-a-select-statement)
    - 9.4 [Refreshing the Schema](#94-refreshing-the-schema)
-10. [Query History](#10-query-history)
-11. [Parameterized Queries](#11-parameterized-queries)
-12. [EXPLAIN and Query Plans](#12-explain-and-query-plans)
-13. [Themes](#13-themes)
-14. [Logging](#14-logging)
-15. [Support Script Manager](#15-support-script-manager)
-16. [Keyboard Shortcuts Reference](#16-keyboard-shortcuts-reference)
-17. [Troubleshooting](#17-troubleshooting)
-18. [Security Guidance](#18-security-guidance)
+10. [QA Engine](#10-qa-engine)
+    - 10.1 [Running the QA Engine](#101-running-the-qa-engine)
+    - 10.2 [Understanding the Results](#102-understanding-the-results)
+    - 10.3 [Suppressing Findings](#103-suppressing-findings)
+    - 10.4 [Finding Scripts for a Finding](#104-finding-scripts-for-a-finding)
+    - 10.5 [Exporting Findings to CSV](#105-exporting-findings-to-csv)
+    - 10.6 [Auto-QA on Connect](#106-auto-qa-on-connect)
+11. [Mind Map](#11-mind-map)
+    - 11.1 [Schema Mind Map](#111-schema-mind-map)
+    - 11.2 [Mind Map from a Table](#112-mind-map-from-a-table)
+    - 11.3 [Navigating the Map](#113-navigating-the-map)
+12. [Query History](#12-query-history)
+13. [Parameterized Queries](#13-parameterized-queries)
+14. [EXPLAIN and Query Plans](#14-explain-and-query-plans)
+15. [Themes](#15-themes)
+16. [Logging](#16-logging)
+17. [Support Script Manager](#17-support-script-manager)
+18. [Keyboard Shortcuts Reference](#18-keyboard-shortcuts-reference)
+19. [Troubleshooting](#19-troubleshooting)
+20. [Security Guidance](#20-security-guidance)
 
 ---
 
@@ -568,15 +579,24 @@ public                          ← schema (bold)
 - **Hover** over an index or foreign key name to see its full SQL definition in a tooltip.
 - Column data types are shown in the second column of the tree.
 
-### 9.2 Generating Scripts from a Table
+### 9.2 Generating Scripts from a Table or Schema
+
+**Right-click any schema** in the tree to open a schema-level menu.
+
+| Menu option | What it does |
+|---|---|
+| **Generate ERD** | Opens an entity-relationship diagram for the schema in your browser |
+| **🗺 Mind Map** | Opens a D3.js force-directed graph of all tables and FK relationships (see [§11.1](#111-schema-mind-map)) |
+| **🔍 QA Engine** | Runs an automated health check on the schema (see [§10](#10-qa-engine)) |
 
 **Right-click any table or view** in the tree to open a script generator menu.
 
-| Menu option | What is inserted |
+| Menu option | What is inserted / done |
 |---|---|
 | **SELECT script** | `SELECT` with every column listed explicitly, a `WHERE` placeholder, and `LIMIT 100` |
 | **UPDATE script** | `UPDATE … SET` with a `col = ` placeholder for every column and a `WHERE` placeholder |
 | **DELETE script** | `DELETE FROM … WHERE` seeded with the table's first column |
+| **🗺 Mind Map from here** | Opens a focused mind map with BFS wave-reveal starting from this table (see [§11.2](#112-mind-map-from-a-table)) |
 
 The script is inserted at the cursor position in the active editor tab but **not executed**. Fill in the placeholder values and press **F5** when ready.
 
@@ -631,7 +651,115 @@ The schema tree is loaded automatically when you connect. If you make schema cha
 
 ---
 
-## 10. Query History
+## 10. QA Engine
+
+The **QA Engine** performs an automated health check on your PostgreSQL schema. It runs six checks in a background thread and presents the results in a colour-coded dialog with a 0–100 health score.
+
+### 10.1 Running the QA Engine
+
+Right-click any **schema** in the Schema Browser tree and choose **🔍 QA Engine**. A status indicator appears at the bottom of the Schema Browser while the checks run. When complete, the QA report dialog opens automatically.
+
+### 10.2 Understanding the Results
+
+The report dialog shows a health score badge at the top and a table of findings below. Each finding has:
+
+| Column | Content |
+|---|---|
+| **Severity** | `ERROR` (red), `WARNING` (amber), or `INFO` (blue) |
+| **Check** | Which of the six checks flagged this finding |
+| **Table** | The affected table (or `—` for schema-wide checks) |
+| **Column** | The affected column where applicable |
+| **Message** | Human-readable description of the problem |
+| **Fix SQL** | A ready-to-use SQL statement to resolve the issue (where available) |
+
+**Health score** is calculated as `100 − (ERROR × 10 + WARNING × 5 + INFO × 1)`, clamped to 0–100. Green ≥ 80, amber ≥ 50, red below 50.
+
+**The six checks:**
+
+**Orphaned tables** — tables with no FK relationships. These are completely isolated in the schema graph. A high count often indicates dead code, staging tables, or schema drift.
+
+**Missing FK indexes** — every FK column should have a covering index; without one, JOIN and DELETE operations on the referenced table require a full sequential scan of the child table. The Fix SQL column contains a `CREATE INDEX CONCURRENTLY` statement you can run without locking the table.
+
+**Circular FK cycles** — tables that form a closed FK dependency loop. These make `TRUNCATE … CASCADE` and ordered inserts difficult. The message lists the full cycle.
+
+**Nullable FKs** — FK columns that allow `NULL`. A NULL FK means the row references no parent, which is sometimes intentional (optional relationship) but often accidental. The engine flags these at `WARNING` level for manual review.
+
+**Naming violations** — tables or columns whose names do not follow `snake_case` (e.g. `CamelCase`, `mixedCase`, names with spaces). PostgreSQL folds unquoted identifiers to lowercase, so non-`snake_case` names require quoting everywhere they appear.
+
+**Type inconsistencies** — the same column name (e.g. `customer_id`) appears in multiple tables with different data types. This often indicates a schema design error or a migration that was partially applied.
+
+### 10.3 Suppressing Findings
+
+Select one or more findings in the table, then click **🔕 Suppress**. A dialog asks whether to suppress:
+
+- **This table only** (`check:table` rule) — the finding will be hidden for this specific table in future runs.
+- **All tables** (`check:*` rule) — the finding will be hidden for every table in future runs of this check.
+
+Suppressed findings are excluded from the results table and do not count toward the health score. Rules are saved in QSettings and persist across sessions and restarts.
+
+To review or remove suppression rules, click **🔕 Manage Suppressions**. A dialog lists all active rules; select any rule and click **Remove** to restore the finding.
+
+### 10.4 Finding Scripts for a Finding
+
+Select a finding in the table and click **🔎 Find Scripts**. The Script Manager opens with a pre-populated search query combining the check name, table name, and column name. If you have a script collection indexed, relevant maintenance scripts appear immediately.
+
+> Requires a script index to be loaded first. See [§17](#17-support-script-manager) for setup instructions.
+
+### 10.5 Exporting Findings to CSV
+
+Click **📄 Export CSV** to save all findings (including suppressed ones) to a CSV file. The file contains columns: `schema`, `check`, `severity`, `table`, `column`, `message`, `fix_sql`.
+
+### 10.6 Auto-QA on Connect
+
+To run the QA Engine automatically every time you connect to a database:
+
+1. Open the **⚙ Settings** panel in the Schema Browser.
+2. Check **Run QA Engine on connect**.
+
+When enabled, Coruscant runs the QA Engine on the first schema immediately after the schema tree finishes loading.
+
+---
+
+## 11. Mind Map
+
+The **Mind Map** feature generates an interactive graph of your schema's tables and FK relationships and opens it in your default web browser as a self-contained HTML file. No internet connection is required.
+
+### 11.1 Schema Mind Map
+
+Right-click any **schema** in the Schema Browser and choose **🗺 Mind Map**. Coruscant queries the database for table row counts and FK edges in a background thread (a status label appears at the bottom of the Schema Browser panel). When ready, the map opens in your browser.
+
+**What you see:**
+- Every table in the schema is a circular node.
+- FK relationships are edges (arrows) between nodes.
+- **Node size** is proportional to the table's row count — larger nodes hold more data.
+- **Node colour** transitions from blue (few FK connections) to red (many FK connections), giving you an immediate visual of the most-connected tables.
+- Hovering over a node shows a tooltip with the table name, row count, and FK count.
+
+### 11.2 Mind Map from a Table
+
+Right-click any **table** in the Schema Browser and choose **🗺 Mind Map from here**. The same schema graph opens, but with a **BFS wave-reveal animation** that starts from the selected table:
+
+1. The selected table appears first (wave 0), highlighted.
+2. Its immediate FK neighbours appear next (wave 1).
+3. Their neighbours appear after that (wave 2), and so on.
+
+This makes the table's neighbourhood immediately visible and reduces the initial visual noise of a large schema.
+
+### 11.3 Navigating the Map
+
+| Action | Result |
+|---|---|
+| **Click and drag** (background) | Pan the graph |
+| **Scroll wheel** | Zoom in / out |
+| **Click and drag** (node) | Pin the node in place; drag it to rearrange |
+| **Search box** (top-left) | Type a table name to highlight matching nodes |
+| **Double-click** (node) | Re-centres the view on that node |
+
+The map is generated as a single `.html` file. You can save it from your browser (File → Save Page As) to share with colleagues or keep as a schema snapshot.
+
+---
+
+## 12. Query History
 
 The **Query History** panel is at the bottom of the left dock, below the Schema Browser.
 
@@ -652,7 +780,7 @@ It stores the last **100** queries you have successfully executed, along with:
 
 ---
 
-## 11. Parameterized Queries
+## 13. Parameterized Queries
 
 Parameterized queries let you write SQL with named placeholders and supply the values separately. This is safer than string-concatenating values into SQL, and makes it easy to re-run the same query with different inputs.
 
@@ -695,7 +823,7 @@ Select a row in the Parameters panel and click **Remove Row**.
 
 ---
 
-## 12. EXPLAIN and Query Plans
+## 14. EXPLAIN and Query Plans
 
 EXPLAIN shows how PostgreSQL plans to execute a query without actually running it (for `EXPLAIN`) or by running it and reporting real statistics (for `EXPLAIN+`).
 
@@ -726,7 +854,7 @@ Execution Time: 0.3 ms
 
 ---
 
-## 13. Themes  
+## 15. Themes  
 
 Click the **🌙** (dark) or **☀** (light) button on the right side of the toolbar to switch themes.
 
@@ -739,7 +867,7 @@ Your preference is saved automatically and restored the next time you launch Cor
 
 ---
 
-## 14. Logging
+## 16. Logging
 
 Coruscant writes a diagnostic log on every run. This is useful when
 troubleshooting connection problems or unexpected behaviour.
@@ -806,7 +934,7 @@ Select-String -Path "$env:APPDATA\Coruscant\logs\coruscant.log" -Pattern "ERROR|
 
 ---
 
-## 15. Support Script Manager
+## 17. Support Script Manager
 
 See [docs/SCRIPT_MANAGER.md](SCRIPT_MANAGER.md) for full documentation.
 
@@ -838,7 +966,7 @@ and SQL body text at 1×.
 
 ---
 
-## 16. Keyboard Shortcuts Reference
+## 18. Keyboard Shortcuts Reference
 
 | Shortcut | Action |
 |---|---|
@@ -855,7 +983,7 @@ and SQL body text at 1×.
 | **Ctrl+Shift+C** *(result grid)* | Copy selected rows with column headers |
 
 
-## 16. Troubleshooting
+## 19. Troubleshooting
 
 > **Before troubleshooting any issue:** check the log file first — it records
 > every connection attempt, query, and error with timestamps. See [Section 14](#14-logging)
@@ -920,7 +1048,7 @@ Coruscant itself does not modify passwords — characters like `$`, `@`, `%`, an
 
 ---
 
-## 17. Security Guidance
+## 20. Security Guidance
 
 ### Passwords with Special Characters
 
@@ -976,6 +1104,32 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 ---
 
 *Author: Marwa Trust Mutemasango*
+
+---
+
+## What's New in 1.0.4
+
+**Version 1.0.4** adds automated schema health analysis and interactive schema visualisation.
+
+### New: QA Engine
+
+A full automated health check engine is now built into the Schema Browser. Right-click any schema and choose **🔍 QA Engine** to run six checks in a background thread and receive a colour-coded report with a 0–100 health score. Checks cover: orphaned tables, missing FK indexes (with generated fix SQL), circular FK cycles, nullable FKs, naming violations, and type inconsistencies.
+
+Findings can be suppressed per-table or check-wide (rules persist across sessions), used to jump-search the Script Manager (**🔎 Find Scripts**), or exported to CSV (**📄 Export CSV**). Enable **Run QA Engine on connect** in the Settings panel to run automatically on every new connection.
+
+See [§10 QA Engine](#10-qa-engine) for the full reference.
+
+### New: Mind Map
+
+Two new right-click options visualise your schema as an interactive D3.js graph rendered in your default browser.
+
+**🗺 Mind Map** (schema) — shows every table and FK relationship as a force-directed graph. Node size encodes row count; colour encodes FK degree. Supports pan, zoom, and a search box to highlight tables by name.
+
+**🗺 Mind Map from here** (table) — the same graph with a BFS wave-reveal animation starting from the selected table, revealing its neighbourhood outward in waves.
+
+Both maps are self-contained HTML files — no internet connection required and no server needed.
+
+See [§11 Mind Map](#11-mind-map) for the full reference.
 
 ---
 

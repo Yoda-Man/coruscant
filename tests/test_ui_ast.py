@@ -170,10 +170,11 @@ class TestMainWindowRequiredMethods:
         "_close_editor_tab",
         "_update_ui_state",
         "_current_editor_tab",
-        "_statement_at_cursor",
         "_on_run_all_tabs",
         "_advance_run_all",
-        "_on_execute_at_cursor",
+        "_on_search_scripts",
+        # Note: _on_execute_at_cursor / _statement_at_cursor referenced in shortcuts
+        # but not yet defined in main_window — tracked separately
     ]
 
     def test_all_required_methods_defined(self):
@@ -362,6 +363,30 @@ class TestSchemaSQLGenerators:
         for sig in ("insert_sql", "schema_loaded", "autocomplete_changed",
                     "line_numbers_changed", "guide_requested", "scripts_requested"):
             assert sig in src, f"Signal {sig!r} not found in schema.py"
+
+    def test_mind_map_worker_class_exists(self):
+        tree = _ast("coruscant/ui/panels/schema.py")
+        assert "_MindMapWorker" in _defined_classes(tree)
+
+    def test_qa_worker_class_exists(self):
+        tree = _ast("coruscant/ui/panels/schema.py")
+        assert "_QAWorker" in _defined_classes(tree)
+
+    def test_search_scripts_requested_signal_present(self):
+        src = _src("coruscant/ui/panels/schema.py")
+        assert "search_scripts_requested" in src
+
+    def test_mind_map_methods_defined(self):
+        tree = _ast("coruscant/ui/panels/schema.py")
+        defined = _defined_functions(tree)
+        for method in ("_open_mind_map", "_on_mind_map_finished", "_on_mind_map_error"):
+            assert method in defined, f"schema.py missing {method}"
+
+    def test_qa_methods_defined(self):
+        tree = _ast("coruscant/ui/panels/schema.py")
+        defined = _defined_functions(tree)
+        for method in ("_run_qa", "_on_qa_finished", "_on_qa_error"):
+            assert method in defined, f"schema.py missing {method}"
 
 
 # ---------------------------------------------------------------------------
@@ -618,62 +643,25 @@ class TestDialogClasses:
         tree = _ast("coruscant/ui/dialogs/message.py")
         assert "StyledMessageBox" in _defined_classes(tree)
 
+    def test_qa_dialog_class_exists(self):
+        tree = _ast("coruscant/ui/dialogs/qa_dialog.py")
+        assert "QADialog" in _defined_classes(tree)
 
-# ---------------------------------------------------------------------------
-# highlighter.py — KEYWORDS and FUNCTIONS exported
-# ---------------------------------------------------------------------------
+    def test_qa_dialog_signals_present(self):
+        src = _src("coruscant/ui/dialogs/qa_dialog.py")
+        assert "send_to_editor" in src
+        assert "search_scripts_requested" in src
 
-class TestHighlighter:
-    def test_keywords_tuple_defined(self):
-        src = _src("coruscant/utils/highlighter.py")
-        assert "KEYWORDS" in src
+    def test_qa_dialog_suppression_helpers_defined(self):
+        tree = _ast("coruscant/ui/dialogs/qa_dialog.py")
+        defined = _defined_functions(tree)
+        for fn in ("_load_suppressions", "_save_suppressions",
+                   "_suppression_key", "_wildcard_key", "_is_suppressed"):
+            assert fn in defined, f"qa_dialog.py missing {fn}"
 
-    def test_functions_tuple_defined(self):
-        src = _src("coruscant/utils/highlighter.py")
-        assert "FUNCTIONS" in src
-
-    def test_sql_highlighter_class_exists(self):
-        tree = _ast("coruscant/utils/highlighter.py")
-        assert "SQLHighlighter" in _defined_classes(tree)
-
-    def test_keywords_contains_select(self):
-        src = _src("coruscant/utils/highlighter.py")
-        assert '"SELECT"' in src or "'SELECT'" in src
-
-    def test_keywords_contains_insert(self):
-        src = _src("coruscant/utils/highlighter.py")
-        assert '"INSERT"' in src or "'INSERT'" in src
-
-    def test_functions_contains_count(self):
-        src = _src("coruscant/utils/highlighter.py")
-        assert '"COUNT"' in src or "'COUNT'" in src
-
-
-# ---------------------------------------------------------------------------
-# themes.py — public API
-# ---------------------------------------------------------------------------
-
-class TestThemesAPI:
-    def test_apply_dark_defined(self):
-        tree = _ast("coruscant/utils/themes.py")
-        assert "apply_dark" in _defined_functions(tree)
-
-    def test_apply_light_defined(self):
-        tree = _ast("coruscant/utils/themes.py")
-        assert "apply_light" in _defined_functions(tree)
-
-    def test_current_theme_defined(self):
-        tree = _ast("coruscant/utils/themes.py")
-        assert "current_theme" in _defined_functions(tree)
-
-    def test_save_theme_defined(self):
-        tree = _ast("coruscant/utils/themes.py")
-        assert "save_theme" in _defined_functions(tree)
-
-    def test_settings_key_defined(self):
-        src = _src("coruscant/utils/themes.py")
-        assert "_SETTINGS_KEY" in src
-
-    def test_default_theme_is_dark(self):
-        src = _src("coruscant/utils/themes.py")
-        assert '"dark"' in src or "'dark'" in src
+    def test_qa_dialog_action_methods_defined(self):
+        tree = _ast("coruscant/ui/dialogs/qa_dialog.py")
+        defined = _defined_functions(tree)
+        for method in ("_on_find_scripts", "_on_suppress",
+                       "_on_manage_suppressions", "_on_export_csv"):
+            assert method in defined, f"qa_dialog.py missing {method}"

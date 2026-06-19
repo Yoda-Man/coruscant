@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.0.3  
+**Version:** 1.0.4  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -38,6 +38,10 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat", entirely offline, no LLM required.
 
+**Automated schema health checks (QA Engine):** right-click any schema to run six checks in a background thread — orphaned tables, missing FK indexes (with generated `CREATE INDEX CONCURRENTLY` fix scripts), circular FK cycles, nullable FKs, snake_case naming violations, and type inconsistencies. Results appear in a colour-coded dialog with a 0–100 health score badge. Findings can be suppressed per-table or check-wide, exported to CSV, and used to jump-search the Script Manager.
+
+**Interactive mind maps:** right-click a schema for a D3.js force-directed graph of all tables and FK relationships, or right-click a specific table for a BFS wave-reveal animation that expands outward from that table. Both render as self-contained HTML in your system browser with pan, zoom, search, and tooltips.
+
 ## Table of Contents
 
 1. [Requirements](#requirements)
@@ -51,17 +55,19 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 9. [Result Tabs](#result-tabs)
 10. [Transaction Mode](#transaction-mode)
 11. [Schema Browser](#schema-browser)
-12. [Support Script Manager](#support-script-manager)
-13. [Query History](#query-history)
-14. [Parameterised Queries](#parameterised-queries)
-15. [EXPLAIN / EXPLAIN ANALYZE](#explain--explain-analyze)
-16. [Exporting Results](#exporting-results)
-17. [Keyboard Shortcuts](#keyboard-shortcuts)
-18. [Themes](#themes)
-19. [Logging](#logging)
-20. [Security Notes](#security-notes)
-21. [Known Limitations](#known-limitations)
-22. [Changelog](#changelog)
+12. [QA Engine](#qa-engine)
+13. [Mind Map](#mind-map)
+14. [Support Script Manager](#support-script-manager)
+15. [Query History](#query-history)
+16. [Parameterised Queries](#parameterised-queries)
+17. [EXPLAIN / EXPLAIN ANALYZE](#explain--explain-analyze)
+18. [Exporting Results](#exporting-results)
+19. [Keyboard Shortcuts](#keyboard-shortcuts)
+20. [Themes](#themes)
+21. [Logging](#logging)
+22. [Security Notes](#security-notes)
+23. [Known Limitations](#known-limitations)
+24. [Changelog](#changelog)
 
 ## Requirements
 
@@ -75,7 +81,7 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 | PySide6 | 6.5 | Qt6 bindings |
 | psycopg2-binary | 2.9 | PostgreSQL adapter |
 | sqlparse | 0.4 | Optional — needed for Format SQL only |
-| networkx | 2.6 | Required for Support Script Manager |
+| networkx | 2.6 | Required for Support Script Manager and QA Engine (circular FK detection) |
 
 ## Installation
 
@@ -142,7 +148,9 @@ coruscant/
 │   ├── database.py          # DatabaseManager (connect, execute, transactions)
 │   ├── worker.py            # QueryWorker — background QThread
 │   ├── sql.py               # split_statements(), split_statements_with_positions()
-│   └── script_manager.py   # ScriptKnowledgeGraph, SQLScriptParser, ScriptIngester
+│   ├── script_manager.py   # ScriptKnowledgeGraph, SQLScriptParser, ScriptIngester
+│   ├── qa_engine.py         # QAEngine, QAFinding, QAReport — six schema health checks
+│   └── mind_map_generator.py # generate_mind_map(), _compute_bfs() — D3.js HTML output
 │
 ├── ui/
 │   ├── main_window.py       # MainWindow — coordinator, no business logic
@@ -155,9 +163,10 @@ coruscant/
 │   │   ├── connection.py    # ConnectionDialog
 │   │   ├── guide.py         # ShortcutGuideDialog
 │   │   ├── message.py       # StyledMessageBox
+│   │   ├── qa_dialog.py     # QADialog — findings table, suppress, export, find scripts
 │   │   └── script_manager_dialog.py  # ScriptManagerDialog
 │   └── panels/
-│       ├── schema.py        # SchemaBrowser + Settings panel
+│       ├── schema.py        # SchemaBrowser + Settings panel + _MindMapWorker + _QAWorker
 │       └── history.py       # HistoryPanel
 │
 └── utils/
@@ -248,9 +257,48 @@ public (schema)
 ```
 
 - **▶ SELECT** button → `SELECT * FROM "schema"."table" LIMIT 100;` at cursor  
-- **Right-click a table** → SELECT / UPDATE / DELETE script templates (all columns pre-filled)  
-- **⚙ Settings** → toggle Auto-complete, Line numbers, Cell-viewer auto-close  
+- **Right-click a schema** → SELECT / UPDATE / DELETE templates, **Generate ERD**, **🗺 Mind Map**, **🔍 QA Engine**  
+- **Right-click a table** → SELECT / UPDATE / DELETE script templates, **🗺 Mind Map from here**  
+- **⚙ Settings** → toggle Auto-complete, Line numbers, Cell-viewer auto-close, **Run QA Engine on connect**  
 - **? Guide** → opens the full in-app quick-reference guide
+
+## QA Engine
+
+Right-click any schema in the Schema Browser and choose **🔍 QA Engine** to run an automated database health check. The engine runs in a background thread and returns a colour-coded report dialog.
+
+**Six checks:**
+
+| Check | What it finds | Fix provided |
+|---|---|---|
+| Orphaned tables | Tables with no FK relationships (isolated nodes) | — |
+| Missing FK indexes | FK columns without a covering index (slow joins) | `CREATE INDEX CONCURRENTLY` script |
+| Circular FK cycles | Tables that form a FK dependency loop | Cycle listed |
+| Nullable FKs | FK columns that allow NULL (referential integrity risk) | — |
+| Naming violations | Tables or columns that don't follow `snake_case` | — |
+| Type inconsistencies | Same column name used with different types across tables | Types listed |
+
+**Health score:** 0–100 badge. Green ≥ 80, amber ≥ 50, red below 50.
+
+**Actions on any finding:**
+
+- **🔎 Find Scripts** — opens the Script Manager pre-searched with the check name and table, so you can pull a relevant maintenance script immediately.
+- **🔕 Suppress** — hide this finding from all future QA runs. Choose per-table or check-wide. Rules are saved in QSettings and survive restarts.
+- **🔕 Manage Suppressions** — view and delete all active suppression rules.
+- **📄 Export CSV** — save the full findings table (schema, check, severity, table, column, message, fix SQL) to a file.
+
+**Auto-QA on connect:** enable **Run QA Engine on connect** in the Schema Browser ⚙ Settings panel to run the QA Engine automatically on the first schema whenever a new connection is established.
+
+## Mind Map
+
+**Schema-level mind map** — right-click a schema and choose **🗺 Mind Map**. Coruscant queries row counts and FK edges in a background thread, then opens a self-contained HTML page in your default browser with:
+
+- D3.js v7 force-directed simulation of all tables and FK relationships.
+- Node size scaled by row count; colour heat (blue → red) by FK degree.
+- Pan and zoom with mouse.
+- Search box: type a table name to highlight matching nodes.
+- Hover tooltips showing table name, row count, and FK count.
+
+**Table-level mind map** — right-click any table and choose **🗺 Mind Map from here**. The same graph opens with a BFS wave-reveal animation that expands outward from the selected table, making its neighbourhood immediately visible before the rest of the graph animates in.
 
 ## Support Script Manager
 

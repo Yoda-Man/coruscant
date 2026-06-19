@@ -149,6 +149,34 @@ class ConnectionDialog(QDialog):
                 border: 1px solid #4361ee;
                 background: #2e2e45;
             }
+            QComboBox::drop-down {
+                border: none;
+                width: 22px;
+            }
+            QComboBox::down-arrow {
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #aaa;
+                width: 0;
+                height: 0;
+            }
+            QComboBox QAbstractItemView {
+                background: #2a2a3a;
+                border: 1px solid #4361ee;
+                border-radius: 4px;
+                color: #e0e0e0;
+                selection-background-color: #4361ee;
+                selection-color: #ffffff;
+                outline: none;
+                padding: 2px;
+            }
+            QComboBox QAbstractItemView::item {
+                padding: 5px 10px;
+                min-height: 22px;
+            }
+            QComboBox QAbstractItemView::item:hover {
+                background: #3a3a55;
+            }
             QLabel {
                 color: #cdd6f4;
                 font-size: 12px;

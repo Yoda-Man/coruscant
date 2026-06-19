@@ -1,5 +1,18 @@
 # Changelog
 
+### 1.0.4
+- **New — QA Engine** — right-click any schema in the Schema Browser and choose **🔍 QA Engine** to run a full automated health check. Six checks fire in a background thread: orphaned tables (no FK relationships), FK columns missing a covering index (with a `CREATE INDEX CONCURRENTLY` fix script), circular FK dependency cycles, nullable FK columns, snake_case naming violations, and column type inconsistencies across tables. Results appear in a colour-coded dialog with a 0–100 health score badge (green ≥ 80, amber ≥ 50, red below 50).
+- **New — QA: Suppress findings** — select any finding and click **🔕 Suppress** to hide it from all future QA runs on that table. Rules are persisted in QSettings (`qa/suppressed_findings`) as `check:table` or `check:*` (check-wide) keys. Manage or clear all rules via **🔕 Manage Suppressions**.
+- **New — QA: Find Scripts** — select a finding and click **🔎 Find Scripts** to open the Script Manager pre-searched with the check name, table, and column. Requires a script index to be loaded first.
+- **New — QA: Export CSV** — click **📄 Export CSV** to save all findings (including suppressed ones) to a CSV file with schema, check, severity, table, column, message, and fix SQL columns.
+- **New — Auto-QA on connect** — enable **Run QA Engine on connect** in the Schema Browser ⚙ Settings panel to automatically run the QA Engine on the first schema whenever a database connection is established.
+- **New — Mind Map** — right-click a schema and choose **🗺 Mind Map** to generate an interactive D3.js force-directed graph of all tables and FK relationships. Node size reflects row count; colour heat (blue → red) reflects FK degree. Renders in the system browser as a self-contained HTML file with pan, zoom, search highlight, and tooltips.
+- **New — Mind Map from here** — right-click any table and choose **🗺 Mind Map from here** to open a focused mind map with a BFS wave-reveal animation starting from that table, making the table's neighbourhood immediately visible.
+- **New — tests: QA Engine suite** — `tests/test_qa_engine.py` adds 68 new unit tests covering all six QA checks with synthetic metadata (no DB required), `QAReport` health score arithmetic, suppression rule logic, BFS wave computation, and mind map HTML structure via mocked cursors.
+- **Improved — test coverage** — `tests/test_ui_ast.py` extended with structural checks for `_MindMapWorker`, `_QAWorker`, `search_scripts_requested` signal, mind map and QA methods in schema.py, `QADialog` class, signals, suppression helpers, and action methods.
+- **Version Update** — bumped application version to 1.0.4.
+
+
 ### 1.0.3
 - **Fixed — passwords with special characters** — passwords containing `$`, `@`, `#`, `%`, `&`, spaces, and other characters that break DSN-style connection strings now work reliably. Coruscant has always used psycopg2 keyword-argument connections (never DSN strings), so the wire protocol was never the issue; the fix adds `inputMethodHints` (`ImhHiddenText | ImhNoPredictiveText | ImhNoAutoUppercase | ImhSensitiveData`) to the password field so IME, autocorrect, and autocapitalise on all platforms cannot silently alter what the user typed.
 - **Improved — show/hide password toggle** — a 👁 button beside the password field lets users reveal what they typed before clicking Test or Connect, eliminating guesswork when a password contains hard-to-distinguish characters.

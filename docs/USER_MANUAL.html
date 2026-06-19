@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Coruscant v1.0.3 &mdash; User Manual</title>
+<title>Coruscant v1.0.4 &mdash; User Manual</title>
 <style>
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -110,7 +110,7 @@
 <nav id="sidebar">
   <div id="sidebar-header">
     <div class="app-name">Coruscant</div>
-    <div class="app-sub">User Manual &middot; v1.0.3</div>
+    <div class="app-sub">User Manual &middot; v1.0.4</div>
   </div>
   <div id="toc">
     <a href="#coruscant-user-manual">Coruscant User Manual</a>
@@ -124,26 +124,38 @@
     <a href="#7-working-with-results" class="toc-sub">7. Working with Results</a>
     <a href="#8-transaction-mode" class="toc-sub">8. Transaction Mode</a>
     <a href="#9-schema-browser" class="toc-sub">9. Schema Browser</a>
-    <a href="#10-query-history" class="toc-sub">10. Query History</a>
-    <a href="#11-parameterized-queries" class="toc-sub">11. Parameterized Queries</a>
-    <a href="#12-explain-and-query-plans" class="toc-sub">12. EXPLAIN and Query Plans</a>
-    <a href="#13-themes" class="toc-sub">13. Themes</a>
-    <a href="#14-logging" class="toc-sub">14. Logging</a>
-    <a href="#15-support-script-manager" class="toc-sub">15. Support Script Manager</a>
-    <a href="#16-keyboard-shortcuts-reference" class="toc-sub">16. Keyboard Shortcuts Reference</a>
-    <a href="#16-troubleshooting" class="toc-sub">16. Troubleshooting</a>
-    <a href="#17-security-guidance" class="toc-sub">17. Security Guidance</a>
+    <a href="#10-qa-engine" class="toc-sub">10. QA Engine</a>
+    <a href="#101-running-the-qa-engine" class="toc-sub" style="padding-left:40px">10.1 Running the QA Engine</a>
+    <a href="#102-understanding-the-results" class="toc-sub" style="padding-left:40px">10.2 Understanding Results</a>
+    <a href="#103-suppressing-findings" class="toc-sub" style="padding-left:40px">10.3 Suppressing Findings</a>
+    <a href="#104-finding-scripts-for-a-finding" class="toc-sub" style="padding-left:40px">10.4 Find Scripts</a>
+    <a href="#105-exporting-findings-to-csv" class="toc-sub" style="padding-left:40px">10.5 Export CSV</a>
+    <a href="#106-auto-qa-on-connect" class="toc-sub" style="padding-left:40px">10.6 Auto-QA on Connect</a>
+    <a href="#11-mind-map" class="toc-sub">11. Mind Map</a>
+    <a href="#111-schema-mind-map" class="toc-sub" style="padding-left:40px">11.1 Schema Mind Map</a>
+    <a href="#112-mind-map-from-a-table" class="toc-sub" style="padding-left:40px">11.2 Mind Map from Table</a>
+    <a href="#113-navigating-the-map" class="toc-sub" style="padding-left:40px">11.3 Navigating the Map</a>
+    <a href="#12-query-history" class="toc-sub">12. Query History</a>
+    <a href="#13-parameterized-queries" class="toc-sub">13. Parameterized Queries</a>
+    <a href="#14-explain-and-query-plans" class="toc-sub">14. EXPLAIN and Query Plans</a>
+    <a href="#15-themes" class="toc-sub">15. Themes</a>
+    <a href="#16-logging" class="toc-sub">16. Logging</a>
+    <a href="#17-support-script-manager" class="toc-sub">17. Support Script Manager</a>
+    <a href="#18-keyboard-shortcuts-reference" class="toc-sub">18. Keyboard Shortcuts Reference</a>
+    <a href="#19-troubleshooting" class="toc-sub">19. Troubleshooting</a>
+    <a href="#20-security-guidance" class="toc-sub">20. Security Guidance</a>
+    <a href="#whats-new-104" class="toc-sub">What's New in 1.0.4</a>
     <a href="#whats-new-103" class="toc-sub">What's New in 1.0.3</a>
   </div>
 </nav>
 <main id="content">
   <div id="hero">
     <img src="coruscant.png" alt="Coruscant">
-    <div class="meta"><div class="version-badge">v1.0.3</div><br>
+    <div class="meta"><div class="version-badge">v1.0.4</div><br>
     PostgreSQL Multi-Query Tool &nbsp;&middot;&nbsp; User Manual</div>
   </div>
 <h1 id="coruscant-user-manual" class="section-anchor">Coruscant User Manual</h1>
-<p><strong>Version:</strong> 1.0.3
+<p><strong>Version:</strong> 1.0.4
 <strong>Author:</strong> Marwa Trust Mutemasango</p>
 <blockquote>
 <p><em>Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.</em></p>
@@ -192,18 +204,29 @@
 <li>8.4 <a href="#84-rolling-back">Rolling Back</a></li>
 <li><a href="#9-schema-browser">Schema Browser</a></li>
 <li>9.1 <a href="#91-navigating-the-tree">Navigating the Tree</a></li>
-<li>9.2 <a href="#92-generating-scripts-from-a-table">Generating Scripts from a Table</a></li>
+<li>9.2 <a href="#92-generating-scripts-from-a-table">Generating Scripts from a Table or Schema</a></li>
 <li>9.3 <a href="#93-inserting-a-select-statement">Inserting a SELECT Statement</a></li>
 <li>9.4 <a href="#94-refreshing-the-schema">Refreshing the Schema</a></li>
-<li><a href="#10-query-history">Query History</a></li>
-<li><a href="#11-parameterized-queries">Parameterized Queries</a></li>
-<li><a href="#12-explain-and-query-plans">EXPLAIN and Query Plans</a></li>
-<li><a href="#13-themes">Themes</a></li>
-<li><a href="#14-logging">Logging</a></li>
-<li><a href="#15-support-script-manager">Support Script Manager</a></li>
-<li><a href="#16-keyboard-shortcuts-reference">Keyboard Shortcuts Reference</a></li>
-<li><a href="#17-troubleshooting">Troubleshooting</a></li>
-<li><a href="#18-security-guidance">Security Guidance</a></li>
+<li><a href="#10-qa-engine">QA Engine</a></li>
+<li>10.1 <a href="#101-running-the-qa-engine">Running the QA Engine</a></li>
+<li>10.2 <a href="#102-understanding-the-results">Understanding the Results</a></li>
+<li>10.3 <a href="#103-suppressing-findings">Suppressing Findings</a></li>
+<li>10.4 <a href="#104-finding-scripts-for-a-finding">Finding Scripts for a Finding</a></li>
+<li>10.5 <a href="#105-exporting-findings-to-csv">Exporting Findings to CSV</a></li>
+<li>10.6 <a href="#106-auto-qa-on-connect">Auto-QA on Connect</a></li>
+<li><a href="#11-mind-map">Mind Map</a></li>
+<li>11.1 <a href="#111-schema-mind-map">Schema Mind Map</a></li>
+<li>11.2 <a href="#112-mind-map-from-a-table">Mind Map from a Table</a></li>
+<li>11.3 <a href="#113-navigating-the-map">Navigating the Map</a></li>
+<li><a href="#12-query-history">Query History</a></li>
+<li><a href="#13-parameterized-queries">Parameterized Queries</a></li>
+<li><a href="#14-explain-and-query-plans">EXPLAIN and Query Plans</a></li>
+<li><a href="#15-themes">Themes</a></li>
+<li><a href="#16-logging">Logging</a></li>
+<li><a href="#17-support-script-manager">Support Script Manager</a></li>
+<li><a href="#18-keyboard-shortcuts-reference">Keyboard Shortcuts Reference</a></li>
+<li><a href="#19-troubleshooting">Troubleshooting</a></li>
+<li><a href="#20-security-guidance">Security Guidance</a></li>
 </ol>
 <hr />
 <h2 id="1-introduction" class="section-anchor">1. Introduction</h2>
@@ -777,13 +800,36 @@ SELECT count(*) FROM orders;
 <li><strong>Hover</strong> over an index or foreign key name to see its full SQL definition in a tooltip.</li>
 <li>Column data types are shown in the second column of the tree.</li>
 </ul>
-<h3 id="92-generating-scripts-from-a-table">9.2 Generating Scripts from a Table</h3>
+<h3 id="92-generating-scripts-from-a-table">9.2 Generating Scripts from a Table or Schema</h3>
+<p><strong>Right-click any schema</strong> in the tree to open a schema-level menu.</p>
+<table>
+<thead>
+<tr>
+<th>Menu option</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Generate ERD</strong></td>
+<td>Opens an entity-relationship diagram for the schema in your browser</td>
+</tr>
+<tr>
+<td><strong>&#x1F5FA; Mind Map</strong></td>
+<td>Opens a D3.js force-directed graph of all tables and FK relationships (see <a href="#11-mind-map">§11</a>)</td>
+</tr>
+<tr>
+<td><strong>&#x1F50D; QA Engine</strong></td>
+<td>Runs an automated health check on the schema (see <a href="#10-qa-engine">§10</a>)</td>
+</tr>
+</tbody>
+</table>
 <p><strong>Right-click any table or view</strong> in the tree to open a script generator menu.</p>
 <table>
 <thead>
 <tr>
 <th>Menu option</th>
-<th>What is inserted</th>
+<th>What is inserted / done</th>
 </tr>
 </thead>
 <tbody>
@@ -798,6 +844,10 @@ SELECT count(*) FROM orders;
 <tr>
 <td><strong>DELETE script</strong></td>
 <td><code>DELETE FROM … WHERE</code> seeded with the table's first column</td>
+</tr>
+<tr>
+<td><strong>&#x1F5FA; Mind Map from here</strong></td>
+<td>Opens a focused mind map with BFS wave-reveal starting from this table (see <a href="#11-mind-map">§11</a>)</td>
 </tr>
 </tbody>
 </table>
@@ -837,7 +887,73 @@ WHERE &quot;id&quot; = ;
 <p><strong>Tip:</strong> If the Schema Browser shows nothing after connecting, verify that you connected to the correct database. The <code>postgres</code> system database contains almost no user objects. Check the connection dialog's <strong>Database</strong> field.</p>
 </blockquote>
 <hr />
-<h2 id="10-query-history" class="section-anchor">10. Query History</h2>
+<h2 id="10-qa-engine" class="section-anchor">10. QA Engine</h2>
+<p>The <strong>QA Engine</strong> performs an automated health check on your PostgreSQL schema. It runs six checks in a background thread and presents the results in a colour-coded dialog with a 0&ndash;100 health score.</p>
+<h3 id="101-running-the-qa-engine">10.1 Running the QA Engine</h3>
+<p>Right-click any <strong>schema</strong> in the Schema Browser tree and choose <strong>&#x1F50D; QA Engine</strong>. A status indicator appears at the bottom of the Schema Browser while the checks run. When complete, the QA report dialog opens automatically.</p>
+<h3 id="102-understanding-the-results">10.2 Understanding the Results</h3>
+<p>The report dialog shows a health score badge at the top and a table of findings below. Each finding has:</p>
+<table>
+<thead><tr><th>Column</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td><strong>Severity</strong></td><td><code>ERROR</code> (red), <code>WARNING</code> (amber), or <code>INFO</code> (blue)</td></tr>
+<tr><td><strong>Check</strong></td><td>Which of the six checks flagged this finding</td></tr>
+<tr><td><strong>Table</strong></td><td>The affected table (or &mdash; for schema-wide checks)</td></tr>
+<tr><td><strong>Column</strong></td><td>The affected column where applicable</td></tr>
+<tr><td><strong>Message</strong></td><td>Human-readable description of the problem</td></tr>
+<tr><td><strong>Fix SQL</strong></td><td>A ready-to-use SQL statement to resolve the issue (where available)</td></tr>
+</tbody>
+</table>
+<p><strong>Health score</strong> is calculated as <code>100 &minus; (ERROR &times; 10 + WARNING &times; 5 + INFO &times; 1)</code>, clamped to 0&ndash;100. Green &ge; 80, amber &ge; 50, red below 50.</p>
+<p><strong>The six checks:</strong></p>
+<p><strong>Orphaned tables</strong> &mdash; tables with no FK relationships. These are completely isolated in the schema graph.</p>
+<p><strong>Missing FK indexes</strong> &mdash; every FK column should have a covering index; without one, JOIN and DELETE operations require a full sequential scan of the child table. The Fix SQL column contains a <code>CREATE INDEX CONCURRENTLY</code> statement you can run without locking the table.</p>
+<p><strong>Circular FK cycles</strong> &mdash; tables that form a closed FK dependency loop. These make <code>TRUNCATE &hellip; CASCADE</code> and ordered inserts difficult. The message lists the full cycle.</p>
+<p><strong>Nullable FKs</strong> &mdash; FK columns that allow <code>NULL</code>. A NULL FK means the row references no parent &mdash; sometimes intentional but often accidental. Flagged at WARNING level for manual review.</p>
+<p><strong>Naming violations</strong> &mdash; tables or columns whose names do not follow <code>snake_case</code>. Non-<code>snake_case</code> names require quoting everywhere they appear in PostgreSQL.</p>
+<p><strong>Type inconsistencies</strong> &mdash; the same column name appears in multiple tables with different data types, often indicating a schema design error or a partially applied migration.</p>
+<h3 id="103-suppressing-findings">10.3 Suppressing Findings</h3>
+<p>Select one or more findings in the table, then click <strong>&#x1F515; Suppress</strong>. A dialog asks whether to suppress:</p>
+<ul>
+<li><strong>This table only</strong> (<code>check:table</code> rule) &mdash; hidden for this specific table in future runs.</li>
+<li><strong>All tables</strong> (<code>check:*</code> rule) &mdash; hidden for every table in future runs of this check.</li>
+</ul>
+<p>Rules are saved in QSettings and persist across sessions. To manage or remove rules, click <strong>&#x1F515; Manage Suppressions</strong>.</p>
+<h3 id="104-finding-scripts-for-a-finding">10.4 Finding Scripts for a Finding</h3>
+<p>Select a finding and click <strong>&#x1F50E; Find Scripts</strong>. The Script Manager opens pre-searched with the check name, table, and column. Requires a script index to be loaded first &mdash; see <a href="#17-support-script-manager">§17</a>.</p>
+<h3 id="105-exporting-findings-to-csv">10.5 Exporting Findings to CSV</h3>
+<p>Click <strong>&#x1F4C4; Export CSV</strong> to save all findings (including suppressed ones) to a CSV file. Columns: <code>schema</code>, <code>check</code>, <code>severity</code>, <code>table</code>, <code>column</code>, <code>message</code>, <code>fix_sql</code>.</p>
+<h3 id="106-auto-qa-on-connect">10.6 Auto-QA on Connect</h3>
+<p>Open the <strong>&#x2699; Settings</strong> panel in the Schema Browser and check <strong>Run QA Engine on connect</strong>. Coruscant will run the QA Engine on the first schema automatically every time a new connection is established.</p>
+<hr />
+<h2 id="11-mind-map" class="section-anchor">11. Mind Map</h2>
+<p>The <strong>Mind Map</strong> feature generates an interactive graph of your schema's tables and FK relationships and opens it in your default web browser as a self-contained HTML file. No internet connection is required.</p>
+<h3 id="111-schema-mind-map">11.1 Schema Mind Map</h3>
+<p>Right-click any <strong>schema</strong> in the Schema Browser and choose <strong>&#x1F5FA; Mind Map</strong>. Coruscant queries the database for table row counts and FK edges in a background thread. When ready, the map opens in your browser.</p>
+<p><strong>What you see:</strong></p>
+<ul>
+<li>Every table in the schema is a circular node.</li>
+<li>FK relationships are edges (arrows) between nodes.</li>
+<li><strong>Node size</strong> is proportional to the table's row count.</li>
+<li><strong>Node colour</strong> transitions from blue (few FK connections) to red (many FK connections).</li>
+<li>Hover over a node for a tooltip showing table name, row count, and FK count.</li>
+</ul>
+<h3 id="112-mind-map-from-a-table">11.2 Mind Map from a Table</h3>
+<p>Right-click any <strong>table</strong> and choose <strong>&#x1F5FA; Mind Map from here</strong>. The same graph opens with a <strong>BFS wave-reveal animation</strong> that starts from the selected table, revealing its neighbourhood outward in waves.</p>
+<h3 id="113-navigating-the-map">11.3 Navigating the Map</h3>
+<table>
+<thead><tr><th>Action</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td><strong>Click and drag</strong> (background)</td><td>Pan the graph</td></tr>
+<tr><td><strong>Scroll wheel</strong></td><td>Zoom in / out</td></tr>
+<tr><td><strong>Click and drag</strong> (node)</td><td>Pin the node; drag to rearrange</td></tr>
+<tr><td><strong>Search box</strong> (top-left)</td><td>Type a table name to highlight matching nodes</td></tr>
+<tr><td><strong>Double-click</strong> (node)</td><td>Re-centres the view on that node</td></tr>
+</tbody>
+</table>
+<p>The map is a single <code>.html</code> file you can save from your browser (File &rarr; Save Page As) to share or keep as a schema snapshot.</p>
+<hr />
+<h2 id="12-query-history" class="section-anchor">12. Query History</h2>
 <p>The <strong>Query History</strong> panel is at the bottom of the left dock, below the Schema Browser.</p>
 <p>It stores the last <strong>100</strong> queries you have successfully executed, along with:
 - The first 80 characters of the SQL (as a preview).
@@ -853,7 +969,7 @@ WHERE &quot;id&quot; = ;
 <p>Consecutive identical queries are deduplicated. Re-running the same SQL updates the timestamp rather than adding a new entry.</p>
 </blockquote>
 <hr />
-<h2 id="11-parameterized-queries" class="section-anchor">11. Parameterized Queries</h2>
+<h2 id="13-parameterized-queries" class="section-anchor">13. Parameterized Queries</h2>
 <p>Parameterized queries let you write SQL with named placeholders and supply the values separately. This is safer than string-concatenating values into SQL, and makes it easy to re-run the same query with different inputs.</p>
 <h3 id="syntax">Syntax</h3>
 <p>Use <code>%(name)s</code> placeholders in your SQL:</p>
@@ -900,7 +1016,7 @@ WHERE customer_id = %(customer_id)s
 <h3 id="removing-parameters">Removing Parameters</h3>
 <p>Select a row in the Parameters panel and click <strong>Remove Row</strong>.</p>
 <hr />
-<h2 id="12-explain-and-query-plans" class="section-anchor">12. EXPLAIN and Query Plans</h2>
+<h2 id="14-explain-and-query-plans" class="section-anchor">14. EXPLAIN and Query Plans</h2>
 <p>EXPLAIN shows how PostgreSQL plans to execute a query without actually running it (for <code>EXPLAIN</code>) or by running it and reporting real statistics (for <code>EXPLAIN+</code>).</p>
 <h3 id="explain">Explain</h3>
 <p>Click <strong>Explain</strong> in the toolbar. Coruscant prepends <code>EXPLAIN</code> to the first statement in the editor and runs it. The query plan appears in an <strong>ExplainResult</strong> tab as formatted text.</p>
@@ -920,7 +1036,7 @@ Execution Time: 0.3 ms
 <p>Only the <strong>first statement</strong> in the editor is explained, even if multiple statements are present.</p>
 </blockquote>
 <hr />
-<h2 id="13-themes" class="section-anchor">13. Themes</h2>
+<h2 id="15-themes" class="section-anchor">15. Themes</h2>
 <p>Click the <strong>🌙</strong> (dark) or <strong>☀</strong> (light) button on the right side of the toolbar to switch themes.</p>
 <table>
 <thead>
@@ -942,7 +1058,7 @@ Execution Time: 0.3 ms
 </table>
 <p>Your preference is saved automatically and restored the next time you launch Coruscant.</p>
 <hr />
-<h2 id="14-logging" class="section-anchor">14. Logging</h2>
+<h2 id="16-logging" class="section-anchor">16. Logging</h2>
 <p>Coruscant writes a diagnostic log on every run. This is useful when
 troubleshooting connection problems or unexpected behaviour.</p>
 <h3 id="log-file-location">Log file location</h3>
@@ -1024,7 +1140,7 @@ python main.py
 <pre><code class="language-powershell">Select-String -Path &quot;$env:APPDATA\Coruscant\logs\coruscant.log&quot; -Pattern &quot;ERROR|WARNING|CRITICAL&quot;
 </code></pre>
 <hr />
-<h2 id="15-support-script-manager" class="section-anchor">15. Support Script Manager</h2>
+<h2 id="17-support-script-manager" class="section-anchor">17. Support Script Manager</h2>
 <p>See <a href="SCRIPT_MANAGER.md">docs/SCRIPT_MANAGER.md</a> for full documentation.</p>
 <p><strong>Opening the Script Manager:</strong> click <strong>📜 Scripts</strong> in the Schema Browser panel.</p>
 <p><strong>Uploading a script collection:</strong> click <strong>⬆ Upload Scripts ZIP</strong> and select a  file
@@ -1067,7 +1183,7 @@ into the active SQL editor tab.</p>
 <p>The engine weights <code>@desc</code> and <code>@fixes</code> tags at 5×, filename tokens at 3×,
 and SQL body text at 1×.</p>
 <hr />
-<h2 id="16-keyboard-shortcuts-reference" class="section-anchor">16. Keyboard Shortcuts Reference</h2>
+<h2 id="18-keyboard-shortcuts-reference" class="section-anchor">18. Keyboard Shortcuts Reference</h2>
 <table>
 <thead>
 <tr>
@@ -1122,10 +1238,10 @@ and SQL body text at 1×.</p>
 </tr>
 </tbody>
 </table>
-<h2 id="16-troubleshooting" class="section-anchor">16. Troubleshooting</h2>
+<h2 id="19-troubleshooting" class="section-anchor">19. Troubleshooting</h2>
 <blockquote>
 <p><strong>Before troubleshooting any issue:</strong> check the log file first — it records
-every connection attempt, query, and error with timestamps. See <a href="#14-logging">Section 14</a>
+every connection attempt, query, and error with timestamps. See <a href="#16-logging">Section 16</a>
 for the file location and how to filter it.</p>
 </blockquote>
 <h3 id="could-not-connect-error">"Could not connect" error</h3>
@@ -1184,7 +1300,7 @@ for the file location and how to filter it.</p>
 </ol>
 <p>Coruscant itself does not modify passwords &mdash; characters like <code>$</code>, <code>@</code>, <code>%</code>, and spaces are passed verbatim to PostgreSQL. If the test connection succeeds in Coruscant but fails in another tool, the other tool may be mishandling the password (a known issue with pgAdmin&rsquo;s URI-based connection builder).</p>
 <hr />
-<h2 id="17-security-guidance" class="section-anchor">17. Security Guidance</h2>
+<h2 id="20-security-guidance" class="section-anchor">20. Security Guidance</h2>
 <h3 id="passwords-with-special-characters">Passwords with Special Characters</h3>
 <p>Coruscant is designed to accept any password your security policy or credential manager produces &mdash; including those with <code>$</code>, <code>@</code>, <code>%</code>, <code>&amp;</code>, <code>/</code>, spaces, and Unicode characters. This is not a minor feature; it is a correctness requirement for any tool used in professional environments.</p>
 <p><strong>How it works:</strong> when Coruscant connects to PostgreSQL, it calls the psycopg2 library using named keyword arguments:</p>
@@ -1244,6 +1360,19 @@ for the file location and how to filter it.</p>
 <hr />
 <p><em>Author: Marwa Trust Mutemasango</em></p>
 <hr />
+<h2 id="whats-new-104" class="section-anchor">What&#8217;s New in 1.0.4</h2>
+<p><strong>Version 1.0.4</strong> adds automated schema health analysis and interactive schema visualisation.</p>
+<h3 id="new-qa-engine">New: QA Engine</h3>
+<p>A full automated health check engine is now built into the Schema Browser. Right-click any schema and choose <strong>&#x1F50D; QA Engine</strong> to run six checks in a background thread and receive a colour-coded report with a 0&ndash;100 health score. Checks cover: orphaned tables, missing FK indexes (with generated fix SQL), circular FK cycles, nullable FKs, naming violations, and type inconsistencies.</p>
+<p>Findings can be suppressed per-table or check-wide (rules persist across sessions), used to jump-search the Script Manager (<strong>&#x1F50E; Find Scripts</strong>), or exported to CSV (<strong>&#x1F4C4; Export CSV</strong>). Enable <strong>Run QA Engine on connect</strong> in the Settings panel to run automatically on every new connection.</p>
+<p>See <a href="#10-qa-engine">§10 QA Engine</a> for the full reference.</p>
+<h3 id="new-mind-map">New: Mind Map</h3>
+<p>Two new right-click options visualise your schema as an interactive D3.js graph rendered in your default browser.</p>
+<p><strong>&#x1F5FA; Mind Map</strong> (schema) &mdash; shows every table and FK relationship as a force-directed graph. Node size encodes row count; colour encodes FK degree. Supports pan, zoom, and a search box.</p>
+<p><strong>&#x1F5FA; Mind Map from here</strong> (table) &mdash; the same graph with a BFS wave-reveal animation starting from the selected table, revealing its neighbourhood outward in waves.</p>
+<p>Both maps are self-contained HTML files &mdash; no internet connection required.</p>
+<p>See <a href="#11-mind-map">§11 Mind Map</a> for the full reference.</p>
+<hr />
 <h2 id="whats-new-103" class="section-anchor">What&#8217;s New in 1.0.3</h2>
 <p><strong>Version 1.0.3</strong> hardens password handling for special characters and improves the connection dialog experience.</p>
 <h3 id="why-this-matters">Why This Matters</h3>
@@ -1261,7 +1390,7 @@ for the file location and how to filter it.</p>
 <h3 id="how-coruscant-differs">How Coruscant Differs from pgAdmin on This Issue</h3>
 <p>pgAdmin constructs a libpq connection URI internally: <code>postgresql://user:password@host/db</code>. In a URI, <code>$</code> is the start of an environment variable, <code>@</code> separates the credentials from the host, and <code>%</code> triggers URL-decoding. When a password contains these characters, pgAdmin&rsquo;s URI parser interprets them as syntax rather than literal characters, silently truncating or mangling the password before it ever reaches PostgreSQL. This is a known, long-standing limitation.</p>
 <p>Coruscant calls <code>psycopg2.connect(password=...)</code> directly &mdash; no URI, no parsing, no interpretation. The password is an opaque string from input to wire protocol.</p>
-  <div id="footer">Coruscant v1.0.3 &nbsp;&middot;&nbsp; Author: Marwa Trust Mutemasango &nbsp;&middot;&nbsp; Open-source, MIT licence</div>
+  <div id="footer">Coruscant v1.0.4 &nbsp;&middot;&nbsp; Author: Marwa Trust Mutemasango &nbsp;&middot;&nbsp; Open-source, MIT licence</div>
 </main>
 </body>
 </html>

@@ -26,8 +26,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget, QSplitter,
-    QLabel, QToolBar, QFileDialog, QSpinBox,
-    QDockWidget, QApplication, QSizePolicy, QStackedWidget,
+    QLabel, QToolBar, QFileDialog, QSpinBox, QPushButton,
+    QDockWidget, QApplication, QSizePolicy, QStackedWidget, QHBoxLayout,
 )
 from coruscant.ui.dialogs.message import StyledMessageBox
 from PySide6.QtCore import Qt, QSize, QSettings, QThread, Signal
@@ -219,19 +219,9 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
 
         tb.addAction(self._act_theme)
-        tb.addSeparator()
-
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        tb.addWidget(spacer)
-
-        self._conn_label = QLabel("  ● Not connected  ")
-        self._conn_label.setStyleSheet(
-            "color: #e57373; font-weight: bold; padding-right: 10px;"
-        )
-        tb.addWidget(self._conn_label)
 
         self._style_toolbar_buttons(tb)
+        self._build_status_bar()
 
     def _style_toolbar_buttons(self, tb: QToolBar) -> None:
         """Apply semantic color coding to each toolbar button."""
@@ -277,6 +267,49 @@ class MainWindow(QMainWindow):
             if btn:
                 btn.setStyleSheet(_ss(base, hover, pressed, bold))
 
+    def _build_status_bar(self) -> None:
+        """Permanent connection-status widget on the right of the status bar.
+
+        Clicking the indicator opens the Connection Manager.
+        The × button disconnects without going through the dialog.
+        """
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 0, 8, 0)
+        layout.setSpacing(2)
+
+        self._sb_conn_btn = QPushButton("● Not connected")
+        self._sb_conn_btn.setFlat(True)
+        self._sb_conn_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sb_conn_btn.setToolTip("Click to open Connection Manager")
+        self._sb_conn_btn.setStyleSheet(self._sb_style("#e57373"))
+        self._sb_conn_btn.clicked.connect(self._on_connect)
+        layout.addWidget(self._sb_conn_btn)
+
+        self._sb_disconnect_btn = QPushButton("×")
+        self._sb_disconnect_btn.setFlat(True)
+        self._sb_disconnect_btn.setFixedSize(18, 18)
+        self._sb_disconnect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sb_disconnect_btn.setToolTip("Disconnect")
+        self._sb_disconnect_btn.setStyleSheet("""
+            QPushButton { color:#666; font-size:13px; font-weight:bold;
+                          border:none; background:transparent; padding:0; }
+            QPushButton:hover { color:#e57373; }
+        """)
+        self._sb_disconnect_btn.clicked.connect(self._on_disconnect)
+        self._sb_disconnect_btn.hide()
+        layout.addWidget(self._sb_disconnect_btn)
+
+        self.statusBar().addPermanentWidget(container)
+
+    @staticmethod
+    def _sb_style(color: str) -> str:
+        return (
+            f"QPushButton {{ color:{color}; font-weight:bold; font-size:11px;"
+            f" border:none; background:transparent; padding:2px 6px; }}"
+            f"QPushButton:hover {{ text-decoration:underline; }}"
+        )
+
     def _build_left_dock(self) -> None:
         dock = QDockWidget("Database Explorer", self)
         dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea)
@@ -295,6 +328,9 @@ class MainWindow(QMainWindow):
         self._schema_browser.guide_requested.connect(self._on_guide_requested)
         self._schema_browser.about_requested.connect(self._on_about_requested)
         self._schema_browser.scripts_requested.connect(self._on_open_script_manager)
+        self._schema_browser.search_scripts_requested.connect(
+            self._on_search_scripts
+        )
         self._left_splitter.addWidget(self._schema_browser)
 
         self._history_panel = HistoryPanel()
@@ -568,20 +604,17 @@ class MainWindow(QMainWindow):
 
         if connected:
             name = self._current_connection_name or "Connected"
-            self._conn_label.setText(f"  ● {name}  ")
-            self._conn_label.setStyleSheet(
-                "color: #81c784; font-weight: bold; padding-right: 10px;"
-            )
+            self._sb_conn_btn.setText(f"● {name}")
+            self._sb_conn_btn.setStyleSheet(self._sb_style("#81c784"))
+            self._sb_disconnect_btn.show()
         elif can_reconnect:
-            self._conn_label.setText("  ● Ready (Auto-reconnect)  ")
-            self._conn_label.setStyleSheet(
-                "color: #ffa726; font-weight: bold; padding-right: 10px;"
-            )
+            self._sb_conn_btn.setText("● Ready (auto-reconnect)")
+            self._sb_conn_btn.setStyleSheet(self._sb_style("#ffa726"))
+            self._sb_disconnect_btn.hide()
         else:
-            self._conn_label.setText("  ● Not connected  ")
-            self._conn_label.setStyleSheet(
-                "color: #e57373; font-weight: bold; padding-right: 10px;"
-            )
+            self._sb_conn_btn.setText("● Not connected")
+            self._sb_conn_btn.setStyleSheet(self._sb_style("#e57373"))
+            self._sb_disconnect_btn.hide()
 
     # ================================================================== #
     #  Toolbar handlers                                                    #
@@ -942,6 +975,28 @@ class MainWindow(QMainWindow):
         if tab:
             tab.set_sql(sql)
             self.statusBar().showMessage("Script loaded from Script Manager.")
+
+    def _on_search_scripts(self, query: str) -> None:
+        """Open Script Manager pre-populated with *query* (from QA Engine findings)."""
+        from coruscant.core.script_manager import ScriptKnowledgeGraph
+        g = (
+            self._script_graph
+            if self._script_graph is not None
+            else ScriptKnowledgeGraph.load()
+        )
+        if g.stats().script_count == 0:
+            StyledMessageBox.information(
+                self,
+                "No Scripts Loaded",
+                "The Script Manager has no scripts indexed.\n\n"
+                "Upload a ZIP archive of .sql scripts to enable this feature.",
+            )
+            return
+        dlg = ScriptManagerDialog(self, preloaded_graph=g)
+        dlg.script_selected.connect(self._on_script_manager_load)
+        dlg.graph_updated.connect(self._on_script_graph_loaded)
+        dlg.search_for_error(query, "")
+        dlg.exec()
 
     def suggest_scripts_for_error(self, error_code: str, error_message: str = "") -> None:
         """

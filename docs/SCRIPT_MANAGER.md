@@ -1,6 +1,6 @@
 # Support Script Manager
 
-**Version:** 1.0.1  
+**Version:** 1.0.2  
 **Author:** Marwa Trust Mutemasango
 
 ---
@@ -160,9 +160,11 @@ When a SQL query fails with a PostgreSQL error code, Coruscant will automaticall
 | Operation | Target |
 |---|---|
 | Ingest 100 scripts | < 5 seconds |
-| Graph load at startup | < 200 ms |
+| Graph load (background, at app startup) | < 200 ms |
 | Search query | < 50 ms |
 | Memory footprint (500 scripts) | < 100 MB |
+
+As of **1.0.2**, the knowledge graph is loaded in a background thread when the application starts, rather than the first time the Script Manager dialog is opened. This means the dialog — and the automatic error-driven suggestion popup — open instantly without freezing the UI while the (potentially multi-megabyte) graph file is decompressed and parsed. If the graph has not finished loading when you open the dialog, it falls back to loading synchronously, exactly as in earlier versions.
 
 ---
 
@@ -197,4 +199,4 @@ The engine lives entirely in `coruscant/core/script_manager.py`:
 | `ParsedScript` | Data-only dataclass for one parsed script |
 | `SearchResult` | Data-only dataclass for one search result |
 
-The graph is stored as a gzip-compressed JSON document. It is built once during ingestion, then loaded into memory at startup. No NetworkX graph object persists between sessions — only the precomputed inverted index, IDF scores, PageRank values, and community assignments are serialised.
+The graph is stored as a gzip-compressed JSON document. It is built once during ingestion, then loaded into memory in a background thread (`MainWindow._GraphLoader`) when the application starts. The loaded graph is cached on `MainWindow` and handed to `ScriptManagerDialog` via its `preloaded_graph` argument, so opening the dialog performs no disk I/O. The dialog emits `graph_updated` after an upload or clear so the cached copy stays in sync. No NetworkX graph object persists between sessions — only the precomputed inverted index, IDF scores, PageRank values, and community assignments are serialised.

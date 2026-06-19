@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.0.1
+**Version:** 1.0.3
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -239,8 +239,12 @@ Click **Connect** in the toolbar. The connection dialog opens.
 | **Port** | Port PostgreSQL is listening on | `5432` |
 | **Database** | Name of the database to connect to | *(required)* |
 | **Username** | Your PostgreSQL role/user name | *(required)* |
-| **Password** | Your password | *(required)* |
+| **Password** | Your password — any characters, including `$`, `@`, `%`, `&`, `/`, and spaces | *(required)* |
 | **SSL mode** | Encryption level (see [Section 4.3](#43-ssl-mode)) | `prefer` |
+
+**Passwords with special characters** work without any escaping or workaround. Coruscant passes the password directly to the PostgreSQL driver as a raw string — it never constructs a URI or DSN where special characters carry syntactic meaning. Auto-generated passwords from cloud providers (AWS RDS, Azure, HashiCorp Vault) and corporate password managers routinely include `$`, `@`, and `%`; all of these work as-is.
+
+Click the **👁** button to the right of the Password field to reveal what you typed and confirm it is correct before connecting. This is particularly useful for long or complex passwords where a typo is hard to spot. Click **👁** again to hide it.
 
 Click **OK** to connect. The status bar and the connection indicator (● top-right of the toolbar) will turn green when connected.
 
@@ -260,6 +264,8 @@ For production databases over the internet, use `verify-full`.
 ### 4.4 Testing a Connection
 
 Before clicking **OK**, click **Test Connection**. Coruscant opens a short-lived test connection and reports whether it succeeded. This does not change your current session.
+
+> **Tip:** If the test fails with an authentication error and you are certain the credentials are correct, click **👁** to reveal the password and verify that no character was silently dropped or changed (some input methods or clipboard managers can alter special characters). Once confirmed, click **Test Connection** again.
 
 ### 4.5 Recent Connections
 
@@ -902,9 +908,35 @@ and SQL body text at 1×.
 - Common causes: syntax errors in SQL, missing tables, permission errors, type mismatches.
 - Fix the SQL in the editor and press **F5** again.
 
+### "Password authentication failed" despite correct credentials
+
+This can happen if the password contains special characters and was entered incorrectly:
+
+1. Open the connection dialog and click **👁** beside the Password field to reveal what is stored.
+2. Verify that the password matches what your credential manager or administrator provided — check for truncated `$` or `%` characters, extra spaces, or autocorrected characters.
+3. Clear the field, retype (or paste) the password, then click **👁** to confirm it looks right before clicking **Test Connection**.
+
+Coruscant itself does not modify passwords — characters like `$`, `@`, `%`, and spaces are passed verbatim to PostgreSQL. If the test connection succeeds in Coruscant but fails in another tool, the other tool may be mishandling the password (a known issue with pgAdmin's URI-based connection builder).
+
 ---
 
 ## 17. Security Guidance
+
+### Passwords with Special Characters
+
+Coruscant is designed to accept any password your security policy or credential manager produces — including those with `$`, `@`, `%`, `&`, `/`, spaces, and Unicode characters. This is not a minor feature; it is a correctness requirement for any tool used in professional environments.
+
+**How it works:** when Coruscant connects to PostgreSQL, it calls the psycopg2 library using named keyword arguments:
+
+```python
+psycopg2.connect(host=..., port=..., dbname=..., user=..., password=...)
+```
+
+The password is passed as a plain Python string and reaches the PostgreSQL wire protocol without any parsing, URI construction, or shell expansion. Tools that build a connection URI (`postgresql://user:password@host/db`) instead must URL-encode the password, and many do this incorrectly or incompletely — `$` gets treated as the start of an environment variable, `@` splits the authority component, and `%` triggers URL-decoding. Coruscant avoids this entire class of bug by design.
+
+**Verifying what you typed:** click the **👁** button beside the Password field at any time to reveal the password in plain text. Click it again to hide it. Use this before clicking Test Connection if you are not certain the field contains what you intended — particularly when pasting from a password manager or typing a complex password on an unfamiliar keyboard.
+
+**IME and autocorrect protection:** the password field disables predictive text, autocorrect, and automatic capitalisation at the platform level. What you type is what gets stored and sent.
 
 ### Saved Passwords
 
@@ -944,6 +976,50 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 ---
 
 *Author: Marwa Trust Mutemasango*
+
+---
+
+## What's New in 1.0.3
+
+**Version 1.0.3** hardens password handling for special characters and improves the connection dialog experience.
+
+### Why This Matters
+
+Modern security policies (PCI-DSS, HIPAA, SOC 2) require passwords to include special characters. Cloud databases and secret managers — AWS RDS, Azure Database, HashiCorp Vault — generate passwords that almost always include `$`, `@`, `%`, `&`, and similar characters. A database client that fails on these forces you to weaken your passwords to fit the tool. That is the wrong trade-off.
+
+Coruscant has always used the correct underlying approach (psycopg2 keyword arguments, never URI construction), so the wire-level connection was already correct. Version 1.0.3 adds the remaining pieces to make the full experience reliable.
+
+### New: Show/Hide Password Toggle
+
+A **👁** button now sits beside the Password field in the connection dialog. Click it to reveal the password in plain text so you can verify what you typed. Click again to hide it. This is especially useful when:
+
+- Pasting a long auto-generated password from a credential manager.
+- Typing on an unfamiliar keyboard layout.
+- Debugging an "authentication failed" error where the password looks correct but isn't.
+
+### Improved: IME and Autocorrect Protection
+
+The password field now explicitly disables predictive text, autocorrection, and automatic capitalisation at the platform level (`ImhHiddenText | ImhNoPredictiveText | ImhNoAutoUppercase | ImhSensitiveData`). On some platforms, input methods would silently alter what you typed — a capital letter added here, a special character swapped there — without any visible indication. This is now prevented.
+
+### How Coruscant Differs from pgAdmin on This Issue
+
+pgAdmin constructs a libpq connection URI internally: `postgresql://user:password@host/db`. In a URI, `$` is the start of an environment variable, `@` separates the credentials from the host, and `%` triggers URL-decoding. When a password contains these characters, pgAdmin's URI parser interprets them as syntax rather than literal characters, silently truncating or mangling the password before it ever reaches PostgreSQL. This is a known, long-standing limitation.
+
+Coruscant calls `psycopg2.connect(password=...)` directly — no URI, no parsing, no interpretation. The password is an opaque string from input to wire protocol.
+
+---
+
+## What's New in 1.0.2
+
+**Version 1.0.2** focuses on the startup experience.
+
+### New Features
+
+- **Startup splash screen** — when you launch the packaged application (the downloaded `.exe` or Linux binary), a branded splash screen now appears immediately while the program loads. It is drawn by the bootloader *before* Python starts, so there is no longer a blank-desktop pause between double-clicking and the window appearing. The caption updates as startup progresses and the splash closes the moment the main window is ready. Running from source (`python main.py`) and the macOS app are unaffected.
+
+### Improvements
+
+- **Instant Script Manager** — the Support Script Manager's search index is now loaded quietly in the background while you work, instead of all at once the first time you open the dialog. Opening **📜 Scripts** — and the automatic suggestion popup that appears after a failed query — no longer briefly freezes the window while the index loads.
 
 ---
 

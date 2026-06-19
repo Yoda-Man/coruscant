@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.0.1  
+**Version:** 1.0.3  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -26,11 +26,15 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Background execution with real cancellation:** queries run in a `QThread` worker; the UI never freezes. Cancel sends `pg_cancel_backend()` to PostgreSQL — the *server* stops the query, not just the client.
 
+**Responsive startup:** packaged builds show a branded splash screen the instant the executable launches — rendered by the bootloader before Python even starts — so there is no blank-desktop wait. The Script Manager's knowledge graph is pre-loaded in the background at startup, so the dialog opens instantly with no UI freeze.
+
 **Inline errors, no modal dialogs:** failed statements open an `ErrorResult` tab alongside successful ones. Read the error, fix the SQL, re-run; your other results stay visible.
 
 **Transactional DDL:** switching off Auto-commit lets you `CREATE TABLE`, inspect the result, and roll the whole thing back. PostgreSQL supports this; Coruscant exposes it properly.
 
 **Parameterised queries done right:** values pass through `cursor.mogrify()` — never string-concatenated. SQL injection is structurally impossible when the Parameters panel is used.
+
+**Special characters in passwords work correctly — always.** Coruscant calls `psycopg2.connect()` with keyword arguments (`host=`, `password=`, …) rather than constructing a URI or DSN string. This is the key architectural difference from tools like pgAdmin, which build a `postgresql://user:password@host/db` URI internally: the moment a password contains `$`, `@`, `%`, `&`, or `/`, URI construction breaks because those characters carry syntactic meaning in a URL. Coruscant never builds a URI. The password is an opaque Python string from the moment you type it to the moment it reaches the PostgreSQL wire protocol — no parsing, no escaping, no shell expansion. Modern DevOps pipelines and cloud credential managers (AWS RDS, Azure Database, HashiCorp Vault) generate passwords that almost always include special characters; Coruscant handles them without any workaround. A `👁` toggle in the connection dialog lets you reveal the password field to verify what you typed before connecting.
 
 **Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat", entirely offline, no LLM required.
 
@@ -116,6 +120,8 @@ bash distribution/build_linux.sh  # Linux  → distribution\dist\Coruscant
 
 All scripts install dependencies and invoke PyInstaller against `distribution/coruscant.spec`. A GitHub Actions workflow triggers on version tags and publishes releases for all three platforms.
 
+The spec bundles a startup splash screen (`docs/splash.png`) via PyInstaller's bootloader splash on Windows and Linux; it is rendered before the Python interpreter starts and is closed by `main.py` once the main window is shown. PyInstaller splashes are not supported in macOS `.app` bundles, so the splash is omitted there automatically.
+
 ## Quick Start
 
 1. Launch Coruscant (`python main.py` or double-click the binary).
@@ -173,6 +179,8 @@ Click **Connections** to open the connection manager. Import a pgAdmin JSON expo
 | `prefer` | Use SSL if available *(default)* |
 | `require` | Always use SSL |
 | `verify-full` | SSL + verify certificate + hostname |
+
+**Password field:** the password is always treated as a raw string — no URI construction, no shell expansion. Passwords containing `$`, `@`, `%`, `&`, `/`, spaces, or any other special character are passed directly to the PostgreSQL driver via keyword argument and work without any escaping or workaround. Click the **👁** button beside the field to reveal what you typed and verify it before connecting.
 
 Passwords are base64-encoded in the OS settings store. Not encrypted — treat the store as sensitive.
 
@@ -347,6 +355,7 @@ Enable verbose logging: `CORUSCANT_LOG_LEVEL=DEBUG python main.py`
 
 ## Security Notes
 
+- **Passwords with special characters are handled correctly.** The connection uses `psycopg2.connect()` keyword arguments — not a URI or DSN string — so characters like `$`, `@`, `%`, `&`, `/`, and spaces are passed to the PostgreSQL driver as-is. No escaping, no workarounds needed. This is important for auto-generated passwords from cloud providers and secret managers, which routinely include these characters.
 - Passwords are base64-encoded in the OS settings store, not encrypted. Treat the store as sensitive.
 - Use `verify-full` SSL for production connections over untrusted networks.
 - The Script Manager never executes uploaded scripts during indexing; analysis is text-only.
@@ -360,6 +369,8 @@ Enable verbose logging: `CORUSCANT_LOG_LEVEL=DEBUG python main.py`
 | Single connection | All editor tabs share one PostgreSQL connection |
 | No `.pgpass` support | Connection parameters must be entered manually |
 | Script Manager graph | Built with NetworkX; requires `pip install networkx>=2.6` |
+
+> **Not a limitation:** passwords containing `$`, `@`, `%`, or any other special character. Coruscant handles these correctly without any workaround.
 
 ## Changelog
 

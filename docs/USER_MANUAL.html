@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Coruscant v1.0.0 &mdash; User Manual</title>
+<title>Coruscant v1.0.3 &mdash; User Manual</title>
 <style>
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -110,7 +110,7 @@
 <nav id="sidebar">
   <div id="sidebar-header">
     <div class="app-name">Coruscant</div>
-    <div class="app-sub">User Manual &middot; v1.0.0</div>
+    <div class="app-sub">User Manual &middot; v1.0.3</div>
   </div>
   <div id="toc">
     <a href="#coruscant-user-manual">Coruscant User Manual</a>
@@ -133,16 +133,17 @@
     <a href="#16-keyboard-shortcuts-reference" class="toc-sub">16. Keyboard Shortcuts Reference</a>
     <a href="#16-troubleshooting" class="toc-sub">16. Troubleshooting</a>
     <a href="#17-security-guidance" class="toc-sub">17. Security Guidance</a>
+    <a href="#whats-new-103" class="toc-sub">What's New in 1.0.3</a>
   </div>
 </nav>
 <main id="content">
   <div id="hero">
     <img src="coruscant.png" alt="Coruscant">
-    <div class="meta"><div class="version-badge">v1.0.0</div><br>
+    <div class="meta"><div class="version-badge">v1.0.3</div><br>
     PostgreSQL Multi-Query Tool &nbsp;&middot;&nbsp; User Manual</div>
   </div>
 <h1 id="coruscant-user-manual" class="section-anchor">Coruscant User Manual</h1>
-<p><strong>Version:</strong> 1.0.0
+<p><strong>Version:</strong> 1.0.3
 <strong>Author:</strong> Marwa Trust Mutemasango</p>
 <blockquote>
 <p><em>Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.</em></p>
@@ -438,7 +439,7 @@ pip install -r requirements.txt</code></p>
 </tr>
 <tr>
 <td><strong>Password</strong></td>
-<td>Your password</td>
+<td>Your password &mdash; any characters, including <code>$</code>, <code>@</code>, <code>%</code>, <code>&amp;</code>, <code>/</code>, and spaces</td>
 <td><em>(required)</em></td>
 </tr>
 <tr>
@@ -448,7 +449,9 @@ pip install -r requirements.txt</code></p>
 </tr>
 </tbody>
 </table>
-<p>Click <strong>OK</strong> to connect. The status bar and the connection indicator (● top-right of the toolbar) will turn green when connected.</p>
+<p><strong>Passwords with special characters</strong> work without any escaping or workaround. Coruscant passes the password directly to the PostgreSQL driver as a raw string &mdash; it never constructs a URI or DSN where special characters carry syntactic meaning. Auto-generated passwords from cloud providers (AWS RDS, Azure, HashiCorp Vault) and corporate password managers routinely include <code>$</code>, <code>@</code>, and <code>%</code>; all of these work as-is.</p>
+<p>Click the <strong>&#128065;</strong> button to the right of the Password field to reveal what you typed and confirm it is correct before connecting. This is particularly useful for long or complex passwords where a typo is hard to spot. Click <strong>&#128065;</strong> again to hide it.</p>
+<p>Click <strong>OK</strong> to connect. The status bar and the connection indicator (&#9679; top-right of the toolbar) will turn green when connected.</p>
 <h3 id="43-ssl-mode">4.3 SSL Mode</h3>
 <table>
 <thead>
@@ -487,6 +490,9 @@ pip install -r requirements.txt</code></p>
 <p>For production databases over the internet, use <code>verify-full</code>.</p>
 <h3 id="44-testing-a-connection">4.4 Testing a Connection</h3>
 <p>Before clicking <strong>OK</strong>, click <strong>Test Connection</strong>. Coruscant opens a short-lived test connection and reports whether it succeeded. This does not change your current session.</p>
+<blockquote>
+<p><strong>Tip:</strong> If the test fails with an authentication error and you are certain the credentials are correct, click <strong>&#128065;</strong> to reveal the password and verify that no character was silently dropped or changed (some input methods or clipboard managers can alter special characters). Once confirmed, click <strong>Test Connection</strong> again.</p>
+</blockquote>
 <h3 id="45-recent-connections">4.5 Recent Connections</h3>
 <p>The top of the connection dialog shows a drop-down of up to 5 previously used connections. Select one to auto-fill all fields. Passwords are stored in an encoded form (not plaintext) in your operating system's settings store.</p>
 <p><strong>Removing a connection:</strong>
@@ -1169,8 +1175,23 @@ for the file location and how to filter it.</p>
 <li>Common causes: syntax errors in SQL, missing tables, permission errors, type mismatches.</li>
 <li>Fix the SQL in the editor and press <strong>F5</strong> again.</li>
 </ul>
+<h3 id="password-auth-failed">&ldquo;Password authentication failed&rdquo; despite correct credentials</h3>
+<p>This can happen if the password contains special characters and was entered incorrectly:</p>
+<ol>
+<li>Open the connection dialog and click <strong>&#128065;</strong> beside the Password field to reveal what is stored.</li>
+<li>Verify that the password matches what your credential manager or administrator provided &mdash; check for truncated <code>$</code> or <code>%</code> characters, extra spaces, or autocorrected characters.</li>
+<li>Clear the field, retype (or paste) the password, then click <strong>&#128065;</strong> to confirm it looks right before clicking <strong>Test Connection</strong>.</li>
+</ol>
+<p>Coruscant itself does not modify passwords &mdash; characters like <code>$</code>, <code>@</code>, <code>%</code>, and spaces are passed verbatim to PostgreSQL. If the test connection succeeds in Coruscant but fails in another tool, the other tool may be mishandling the password (a known issue with pgAdmin&rsquo;s URI-based connection builder).</p>
 <hr />
 <h2 id="17-security-guidance" class="section-anchor">17. Security Guidance</h2>
+<h3 id="passwords-with-special-characters">Passwords with Special Characters</h3>
+<p>Coruscant is designed to accept any password your security policy or credential manager produces &mdash; including those with <code>$</code>, <code>@</code>, <code>%</code>, <code>&amp;</code>, <code>/</code>, spaces, and Unicode characters. This is not a minor feature; it is a correctness requirement for any tool used in professional environments.</p>
+<p><strong>How it works:</strong> when Coruscant connects to PostgreSQL, it calls the psycopg2 library using named keyword arguments:</p>
+<pre><code class="language-python">psycopg2.connect(host=..., port=..., dbname=..., user=..., password=...)</code></pre>
+<p>The password is passed as a plain Python string and reaches the PostgreSQL wire protocol without any parsing, URI construction, or shell expansion. Tools that build a connection URI (<code>postgresql://user:password@host/db</code>) instead must URL-encode the password, and many do this incorrectly or incompletely &mdash; <code>$</code> gets treated as the start of an environment variable, <code>@</code> splits the authority component, and <code>%</code> triggers URL-decoding. Coruscant avoids this entire class of bug by design.</p>
+<p><strong>Verifying what you typed:</strong> click the <strong>&#128065;</strong> button beside the Password field at any time to reveal the password in plain text. Click it again to hide it. Use this before clicking Test Connection if you are not certain the field contains what you intended &mdash; particularly when pasting from a password manager or typing a complex password on an unfamiliar keyboard.</p>
+<p><strong>IME and autocorrect protection:</strong> the password field disables predictive text, autocorrect, and automatic capitalisation at the platform level. What you type is what gets stored and sent.</p>
 <h3 id="saved-passwords">Saved Passwords</h3>
 <p>Connection passwords are encoded (base64) before being saved to your operating system's settings store:</p>
 <ul>
@@ -1222,7 +1243,25 @@ for the file location and how to filter it.</p>
 <p>Coruscant uses <code>cursor.mogrify()</code> for parameterized queries, which safely escapes all values. However, if you manually concatenate user-supplied strings into your SQL, those queries are not protected. Always use the Parameters panel for variable values.</p>
 <hr />
 <p><em>Author: Marwa Trust Mutemasango</em></p>
-  <div id="footer">Coruscant v1.0.0 &nbsp;&middot;&nbsp; Author: Marwa Trust Mutemasango &nbsp;&middot;&nbsp; Open-source, MIT licence</div>
+<hr />
+<h2 id="whats-new-103" class="section-anchor">What&#8217;s New in 1.0.3</h2>
+<p><strong>Version 1.0.3</strong> hardens password handling for special characters and improves the connection dialog experience.</p>
+<h3 id="why-this-matters">Why This Matters</h3>
+<p>Modern security policies (PCI-DSS, HIPAA, SOC&nbsp;2) require passwords to include special characters. Cloud databases and secret managers &mdash; AWS RDS, Azure Database, HashiCorp Vault &mdash; generate passwords that almost always include <code>$</code>, <code>@</code>, <code>%</code>, <code>&amp;</code>, and similar characters. A database client that fails on these forces you to weaken your passwords to fit the tool. That is the wrong trade-off.</p>
+<p>Coruscant has always used the correct underlying approach (psycopg2 keyword arguments, never URI construction), so the wire-level connection was already correct. Version 1.0.3 adds the remaining pieces to make the full experience reliable.</p>
+<h3 id="new-show-hide-toggle">New: Show/Hide Password Toggle</h3>
+<p>A <strong>&#128065;</strong> button now sits beside the Password field in the connection dialog. Click it to reveal the password in plain text so you can verify what you typed. Click again to hide it. This is especially useful when:</p>
+<ul>
+<li>Pasting a long auto-generated password from a credential manager.</li>
+<li>Typing on an unfamiliar keyboard layout.</li>
+<li>Debugging an &ldquo;authentication failed&rdquo; error where the password looks correct but isn&rsquo;t.</li>
+</ul>
+<h3 id="improved-ime-protection">Improved: IME and Autocorrect Protection</h3>
+<p>The password field now explicitly disables predictive text, autocorrection, and automatic capitalisation at the platform level (<code>ImhHiddenText | ImhNoPredictiveText | ImhNoAutoUppercase | ImhSensitiveData</code>). On some platforms, input methods would silently alter what you typed &mdash; a capital letter added here, a special character swapped there &mdash; without any visible indication. This is now prevented.</p>
+<h3 id="how-coruscant-differs">How Coruscant Differs from pgAdmin on This Issue</h3>
+<p>pgAdmin constructs a libpq connection URI internally: <code>postgresql://user:password@host/db</code>. In a URI, <code>$</code> is the start of an environment variable, <code>@</code> separates the credentials from the host, and <code>%</code> triggers URL-decoding. When a password contains these characters, pgAdmin&rsquo;s URI parser interprets them as syntax rather than literal characters, silently truncating or mangling the password before it ever reaches PostgreSQL. This is a known, long-standing limitation.</p>
+<p>Coruscant calls <code>psycopg2.connect(password=...)</code> directly &mdash; no URI, no parsing, no interpretation. The password is an opaque string from input to wire protocol.</p>
+  <div id="footer">Coruscant v1.0.3 &nbsp;&middot;&nbsp; Author: Marwa Trust Mutemasango &nbsp;&middot;&nbsp; Open-source, MIT licence</div>
 </main>
 </body>
 </html>

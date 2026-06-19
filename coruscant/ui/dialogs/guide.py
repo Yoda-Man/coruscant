@@ -22,6 +22,7 @@ from PySide6.QtGui import QPixmap, QFont
 from PySide6.QtCore import Qt
 
 from coruscant import __version__, __app_name__
+from coruscant.ui.style import dialog_stylesheet
 
 # ── Logo resolution (same strategy as app.py) ────────────────────────── #
 _BASE = (
@@ -31,50 +32,8 @@ _BASE = (
 )
 _ICON_PATH = str(_BASE / "docs" / "icon.png")
 
-# ── Stylesheet ────────────────────────────────────────────────────────── #
-_DIALOG_STYLE = """
-    QDialog {
-        background: #0e0e1a;
-    }
-    QTextBrowser {
-        background: #12121e;
-        color: #cdd6f4;
-        border: 1px solid #2e2e4e;
-        border-radius: 6px;
-        padding: 12px;
-        font-size: 12px;
-    }
-    QPushButton {
-        background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-            stop:0 #3c3c52, stop:1 #2e2e42);
-        border: 1px solid #555570;
-        border-radius: 5px;
-        padding: 7px 28px;
-        color: #ddd;
-        font-size: 12px;
-        font-weight: 600;
-        min-width: 80px;
-    }
-    QPushButton:hover {
-        background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-            stop:0 #4a4a62, stop:1 #3c3c52);
-        border-color: #7070a0;
-        color: #fff;
-    }
-    QPushButton:pressed {
-        background: #4361ee;
-        border-color: #4361ee;
-    }
-    QLabel#title_label {
-        color: #cdd6f4;
-        font-size: 18px;
-        font-weight: bold;
-    }
-    QLabel#subtitle_label {
-        color: #8888aa;
-        font-size: 11px;
-    }
-"""
+# ── Stylesheet (shared design system — see coruscant.ui.style) ─────────── #
+_DIALOG_STYLE = dialog_stylesheet()
 
 # ── Guide HTML content ────────────────────────────────────────────────── #
 _GUIDE_HTML = """

@@ -159,6 +159,9 @@ def apply_dark(app: QApplication) -> None:
         QPushButton:pressed  {
             background: #4361ee; color: #fff; border-color: #4361ee;
         }
+        QPushButton:checked  {
+            background: #4361ee; color: #fff; border-color: #4361ee;
+        }
         QPushButton:disabled { color: #555; background: #252525; border-color: #333; }
         QTableWidget         { gridline-color: #383838; }
         QPlainTextEdit       { background: #1e1e1e; color: #d4d4d4; border: none; }
@@ -271,6 +274,7 @@ def apply_light(app: QApplication) -> None:
             border-color: #0078d4;
         }
         QPushButton:pressed { background: #0078d4; color: #fff; border-color: #0078d4; }
+        QPushButton:checked { background: #0078d4; color: #fff; border-color: #0078d4; }
         QPushButton:disabled { color: #aaa; background: #f0f0f0; border-color: #ddd; }
         QDockWidget::title {
             background: qlineargradient(x1:0,y1:0,x2:0,y2:1,

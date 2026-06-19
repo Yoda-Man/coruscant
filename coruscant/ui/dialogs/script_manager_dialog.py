@@ -26,6 +26,7 @@ from coruscant.core.script_manager import (
     ScriptIngester, ScriptKnowledgeGraph, SearchResult, GraphStats,
 )
 from coruscant.ui.dialogs.message import StyledMessageBox
+from coruscant.ui.style import script_manager_stylesheet
 
 log = logging.getLogger(__name__)
 
@@ -34,78 +35,8 @@ _SETTINGS_APP = "Coruscant"
 _GRAPH_KEY    = "script_manager/graph_path"
 _WIN_GEO_KEY  = "script_manager/geometry"
 
-_DIALOG_STYLE = """
-QDialog { background: #0e0e1a; }
-QLabel  { color: #cdd6f4; font-size: 12px; }
-QLabel#stats  { color: #a6adc8; font-size: 11px; }
-QLabel#header { color: #89b4fa; font-size: 14px; font-weight: bold; }
-QLineEdit {
-    background: #1e1e2e; border: 1px solid #3c3c52;
-    border-radius: 4px; padding: 6px 10px; color: #cdd6f4;
-    font-size: 12px; selection-background-color: #4361ee;
-}
-QLineEdit:focus { border-color: #4361ee; background: #20203a; }
-QLineEdit:hover { border-color: #555570; }
-QTableWidget {
-    background: #12121e; alternate-background-color: #1a1a2a;
-    border: 1px solid #2e2e4e; gridline-color: #2a2a3e;
-    color: #cdd6f4; selection-background-color: #094771;
-    selection-color: #fff; font-size: 12px;
-    outline: 0;
-}
-QTableWidget::item { padding: 5px 8px; }
-QTableWidget::item:hover { background: #1e2a3a; }
-QHeaderView::section {
-    background: #1e1e2e; color: #a6adc8;
-    border: 1px solid #2e2e4e; padding: 6px 8px;
-    font-size: 11px; font-weight: 700;
-}
-QPushButton {
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #3c3c52, stop:1 #2e2e42);
-    border: 1px solid #555570; border-radius: 5px;
-    padding: 7px 18px; color: #ddd;
-    font-size: 12px; font-weight: 600;
-}
-QPushButton:hover {
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #4a4a62, stop:1 #3c3c52);
-    border-color: #7070a0; color: #fff;
-}
-QPushButton:pressed  { background: #4361ee; border-color: #4361ee; }
-QPushButton:disabled { background: #1c1c2e; color: #444; border-color: #333; }
-QPushButton#upload_btn {
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #1976D2, stop:1 #1565C0);
-    border-color: #1E88E5; font-weight: 700;
-}
-QPushButton#upload_btn:hover {
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #1E88E5, stop:1 #1976D2);
-}
-QPushButton#clear_btn {
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #7F0000, stop:1 #6A0000);
-    border-color: #B71C1C;
-}
-QPushButton#clear_btn:hover {
-    background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-        stop:0 #B71C1C, stop:1 #7F0000);
-}
-QProgressBar {
-    background: #1e1e2e; border: 1px solid #3c3c52;
-    border-radius: 4px; text-align: center;
-    color: #cdd6f4; font-size: 11px;
-}
-QProgressBar::chunk { background: #4361ee; border-radius: 3px; }
-QPlainTextEdit {
-    background: #12121e; color: #cdd6f4;
-    border: 1px solid #2e2e4e; border-radius: 4px;
-    font-family: Courier New, monospace; font-size: 11px;
-    padding: 6px;
-}
-QFrame#divider { background: #2e2e4e; }
-"""
+# Full dialog stylesheet, assembled from the shared design tokens.
+_DIALOG_STYLE = script_manager_stylesheet()
 
 
 # ── Background worker ─────────────────────────────────────────────────── #
@@ -217,8 +148,9 @@ class ScriptManagerDialog(QDialog):
     """
 
     script_selected: Signal = Signal(str)
+    graph_updated:   Signal = Signal(object)   # emitted when the loaded graph changes
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, preloaded_graph: "ScriptKnowledgeGraph | None" = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Support Script Manager")
         self.resize(980, 640)
@@ -226,7 +158,12 @@ class ScriptManagerDialog(QDialog):
         self.setStyleSheet(_DIALOG_STYLE)
 
         self._settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
-        self._graph: ScriptKnowledgeGraph = ScriptKnowledgeGraph.load()
+        # Reuse a graph pre-loaded in the background by MainWindow when available;
+        # otherwise fall back to loading it here (keeps the dialog self-sufficient).
+        self._graph: ScriptKnowledgeGraph = (
+            preloaded_graph if preloaded_graph is not None
+            else ScriptKnowledgeGraph.load()
+        )
         self._worker: _IngestionWorker | None = None
         self._progress_dlg: _ProgressDialog | None = None
         self._debounce_timer = QTimer(self)
@@ -585,6 +522,7 @@ class ScriptManagerDialog(QDialog):
 
     def _on_ingestion_done(self, graph: ScriptKnowledgeGraph) -> None:
         self._graph = graph
+        self.graph_updated.emit(graph)
         if self._progress_dlg:
             self._progress_dlg.accept()
         s = self._graph.stats()
@@ -623,6 +561,7 @@ class ScriptManagerDialog(QDialog):
         ):
             return
         self._graph = ScriptKnowledgeGraph()
+        self.graph_updated.emit(self._graph)
         saved = ScriptKnowledgeGraph.default_path()
         if saved.exists():
             try:

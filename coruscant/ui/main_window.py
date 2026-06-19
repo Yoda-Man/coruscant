@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QDockWidget, QApplication, QSizePolicy, QStackedWidget,
 )
 from coruscant.ui.dialogs.message import StyledMessageBox
-from PySide6.QtCore import Qt, QSize, QSettings
+from PySide6.QtCore import Qt, QSize, QSettings, QThread, Signal
 from PySide6.QtGui import QAction, QKeySequence, QShortcut, QCloseEvent
 
 from coruscant import __version__, __app_name__
@@ -44,6 +44,7 @@ from coruscant.ui.panels.schema import SchemaBrowser
 from coruscant.ui.panels.history import HistoryPanel
 from coruscant.ui.dialogs.connection import ConnectionDialog
 from coruscant.ui.dialogs.guide import ShortcutGuideDialog
+from coruscant.ui.dialogs.about import AboutDialog
 from coruscant.ui.dialogs.script_manager_dialog import ScriptManagerDialog
 import coruscant.utils.themes as themes
 
@@ -51,6 +52,28 @@ log = logging.getLogger(__name__)
 
 _SETTINGS_ORG = "Coruscant"
 _SETTINGS_APP = "Coruscant"
+
+
+class _GraphLoader(QThread):
+    """
+    Loads the saved Script Manager knowledge graph off the UI thread.
+
+    The graph is a gzip-compressed JSON file that can be several megabytes;
+    decoding it on the main thread freezes the UI the first time the Script
+    Manager is opened.  Loading it in the background at startup means the
+    dialog opens instantly later on.
+    """
+
+    loaded: Signal = Signal(object)   # ScriptKnowledgeGraph
+
+    def run(self) -> None:
+        try:
+            from coruscant.core.script_manager import ScriptKnowledgeGraph
+            graph = ScriptKnowledgeGraph.load()
+        except Exception:
+            log.exception("Background script-graph load failed")
+            return
+        self.loaded.emit(graph)
 
 
 class MainWindow(QMainWindow):
@@ -73,6 +96,9 @@ class MainWindow(QMainWindow):
         # Run-all-tabs state
         self._run_all_queue: list  = []
         self._run_all_total: int   = 0
+        # Script Manager knowledge graph — loaded lazily in the background.
+        self._script_graph = None
+        self._graph_loader: _GraphLoader | None = None
 
         self._build_toolbar()
         self._build_left_dock()
@@ -81,6 +107,19 @@ class MainWindow(QMainWindow):
         self._update_ui_state()
         self.statusBar().showMessage("Ready  –  not connected")
         self._restore_geometry()
+        self._prewarm_script_graph()
+
+    def _prewarm_script_graph(self) -> None:
+        """Start loading the Script Manager graph off the UI thread."""
+        self._graph_loader = _GraphLoader(self)
+        self._graph_loader.loaded.connect(self._on_script_graph_loaded)
+        self._graph_loader.start()
+
+    def _on_script_graph_loaded(self, graph) -> None:
+        """Cache the background-loaded knowledge graph for instant dialog open."""
+        self._script_graph = graph
+        log.debug("Script graph pre-warmed: %d script(s)",
+                  graph.stats().script_count)
 
     # ================================================================== #
     #  UI construction                                                     #
@@ -109,18 +148,18 @@ class MainWindow(QMainWindow):
         self._act_disconnect = action("Disconnect")
 
         # Query execution
-        self._act_execute   = action("▶  Execute",
+        self._act_execute   = action("▶ Execute",
                                      "Execute current tab — selection or full  (Ctrl+Enter)")
-        self._act_cancel    = action("⏹  Cancel",   "Cancel running query (Escape)", "Escape")
+        self._act_cancel    = action("⏹ Cancel",   "Cancel running query (Escape)", "Escape")
         self._act_explain   = action("Explain",     "EXPLAIN the first statement")
         self._act_explain_a = action("Explain+",    "EXPLAIN ANALYZE BUFFERS")
 
         # Editor
-        self._act_format  = action("🪄  Format", "Auto-format SQL (sqlparse)")
-        self._act_clear   = action("🧹  Clear",  "Clear editor and unpinned results")
-        self._act_open    = action("📂  Open",   "Open a .sql file")
-        self._act_save    = action("💾  Save",   "Save editor content to a .sql file")
-        self._act_new_tab = action("+ Tab",      "New editor tab  (Ctrl+T)")
+        self._act_format  = action("🪄 Format", "Auto-format SQL (sqlparse)")
+        self._act_clear   = action("🧹 Clear",  "Clear editor and unpinned results")
+        self._act_open    = action("📂 Open",   "Open a .sql file")
+        self._act_save    = action("💾 Save",   "Save editor content to a .sql file")
+        self._act_new_tab = action("＋ Tab",     "New editor tab  (Ctrl+T)")
 
         # Transaction
         self._act_autocommit = action("Auto-commit", checkable=True,
@@ -254,6 +293,7 @@ class MainWindow(QMainWindow):
         self._schema_browser.autocomplete_changed.connect(self._on_autocomplete_changed)
         self._schema_browser.line_numbers_changed.connect(self._on_line_numbers_changed)
         self._schema_browser.guide_requested.connect(self._on_guide_requested)
+        self._schema_browser.about_requested.connect(self._on_about_requested)
         self._schema_browser.scripts_requested.connect(self._on_open_script_manager)
         self._left_splitter.addWidget(self._schema_browser)
 
@@ -312,6 +352,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         log.info("Application closing")
         self._save_geometry()
+        if self._graph_loader and self._graph_loader.isRunning():
+            self._graph_loader.wait(2000)
         if self._db.is_connected:
             self._db.disconnect()
         event.accept()
@@ -360,6 +402,7 @@ class MainWindow(QMainWindow):
         tab.set_autocomplete_enabled(ac_enabled)
         ln_enabled = self._settings.value("settings/line_numbers", True, type=bool)
         tab.set_line_numbers_enabled(ln_enabled)
+        tab.set_dark_theme(themes.current_theme(self._settings) == "dark")
 
         tab.editor.setFocus()
         return tab
@@ -827,6 +870,16 @@ class MainWindow(QMainWindow):
             self._act_theme.setToolTip("Switch to light theme")
             log.info("Theme changed: light → dark")
 
+        self._apply_editor_theme()
+
+    def _apply_editor_theme(self) -> None:
+        """Propagate the active theme to every editor tab's gutter."""
+        dark = themes.current_theme(self._settings) == "dark"
+        for i in range(self._editor_tabs.count()):
+            tab = self._editor_tabs.widget(i)
+            if isinstance(tab, EditorTab):
+                tab.set_dark_theme(dark)
+
     # ================================================================== #
     #  Dock / panel signal handlers                                        #
     # ================================================================== #
@@ -871,10 +924,16 @@ class MainWindow(QMainWindow):
         dlg = ShortcutGuideDialog(self)
         dlg.exec()
 
+    def _on_about_requested(self) -> None:
+        """Open the About dialog."""
+        dlg = AboutDialog(self)
+        dlg.exec()
+
     def _on_open_script_manager(self) -> None:
         """Open the Support Script Manager dialog."""
-        dlg = ScriptManagerDialog(self)
+        dlg = ScriptManagerDialog(self, preloaded_graph=self._script_graph)
         dlg.script_selected.connect(self._on_script_manager_load)
+        dlg.graph_updated.connect(self._on_script_graph_loaded)
         dlg.exec()
 
     def _on_script_manager_load(self, sql: str) -> None:
@@ -890,11 +949,12 @@ class MainWindow(QMainWindow):
         Called automatically when a query fails with a recognisable SQLSTATE.
         """
         from coruscant.core.script_manager import ScriptKnowledgeGraph
-        g = ScriptKnowledgeGraph.load()
+        g = self._script_graph if self._script_graph is not None else ScriptKnowledgeGraph.load()
         if g.stats().script_count == 0:
             return   # nothing to suggest
-        dlg = ScriptManagerDialog(self)
+        dlg = ScriptManagerDialog(self, preloaded_graph=g)
         dlg.script_selected.connect(self._on_script_manager_load)
+        dlg.graph_updated.connect(self._on_script_graph_loaded)
         dlg.search_for_error(error_code, error_message)
         dlg.exec()
 

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -118,6 +119,9 @@ class ConnectionDialog(QDialog):
         self._accepted_profile: SavedConnection | None = None
 
         self.setStyleSheet("""
+            QDialog {
+                background: #12121e;
+            }
             QGroupBox {
                 border: 1px solid #313244;
                 border-radius: 6px;
@@ -329,6 +333,40 @@ class ConnectionDialog(QDialog):
         self._user = QLineEdit()
         self._password = QLineEdit()
         self._password.setEchoMode(QLineEdit.EchoMode.Password)
+        # Prevent IME/autocorrect/autocapitalise from silently altering the
+        # password — critical for passwords that contain special characters
+        # such as $, @, !, #, etc.
+        self._password.setInputMethodHints(
+            Qt.InputMethodHint.ImhHiddenText
+            | Qt.InputMethodHint.ImhNoPredictiveText
+            | Qt.InputMethodHint.ImhNoAutoUppercase
+            | Qt.InputMethodHint.ImhSensitiveData
+        )
+
+        # Show/hide toggle so users can verify they typed the right password
+        self._show_pw_btn = QToolButton()
+        self._show_pw_btn.setText("👁")
+        self._show_pw_btn.setToolTip("Show / hide password")
+        self._show_pw_btn.setCheckable(True)
+        self._show_pw_btn.setStyleSheet("""
+            QToolButton {
+                background: transparent;
+                border: none;
+                padding: 0 4px;
+                font-size: 14px;
+                color: #888;
+            }
+            QToolButton:hover  { color: #cdd6f4; }
+            QToolButton:checked { color: #89b4fa; }
+        """)
+        self._show_pw_btn.toggled.connect(self._toggle_password_visibility)
+
+        pw_row = QWidget()
+        pw_layout = QHBoxLayout(pw_row)
+        pw_layout.setContentsMargins(0, 0, 0, 0)
+        pw_layout.setSpacing(4)
+        pw_layout.addWidget(self._password, 1)
+        pw_layout.addWidget(self._show_pw_btn)
 
         self._ssl_mode = QComboBox()
         self._ssl_mode.addItems(SSL_MODES)
@@ -348,7 +386,7 @@ class ConnectionDialog(QDialog):
         form.addRow("Port:", self._port)
         form.addRow("Database:", self._database)
         form.addRow("Username:", self._user)
-        form.addRow("Password:", self._password)
+        form.addRow("Password:", pw_row)
         form.addRow("SSL mode:", self._ssl_mode)
         layout.addWidget(box)
 
@@ -533,6 +571,13 @@ class ConnectionDialog(QDialog):
             conn.fg_color = selected.fg_color
             conn.source = selected.source if selected.source == "pgadmin" else "manual"
         return conn
+
+    def _toggle_password_visibility(self, checked: bool) -> None:
+        """Switch the password field between hidden and plain-text display."""
+        if checked:
+            self._password.setEchoMode(QLineEdit.EchoMode.Normal)
+        else:
+            self._password.setEchoMode(QLineEdit.EchoMode.Password)
 
     def _on_import_pgadmin(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

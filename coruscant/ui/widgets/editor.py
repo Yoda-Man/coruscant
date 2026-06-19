@@ -123,11 +123,21 @@ class _LineNumberArea(QWidget):
 #  SQLEditor                                                                   #
 # =========================================================================== #
 
-# Colours used for the gutter and current-line highlight
-_GUTTER_BG      = QColor("#141420")   # slightly darker than editor bg
-_GUTTER_ACTIVE  = QColor("#89b4fa")   # blue -- current line number
-_GUTTER_NORMAL  = QColor("#3a3a5c")   # muted -- other line numbers
-_CURRENT_LINE   = QColor("#1a1a30")   # subtle highlight band
+# Colours used for the gutter and current-line highlight.
+# Two sets — one per theme — so the gutter matches the editor in both light
+# and dark mode. Selected at paint time by SQLEditor._dark.
+_GUTTER_DARK = {
+    "bg":      QColor("#141420"),   # slightly darker than the dark editor bg
+    "active":  QColor("#89b4fa"),   # blue — current line number
+    "normal":  QColor("#5a5a7c"),   # muted — other line numbers
+    "current": QColor("#1a1a30"),   # subtle current-line highlight band
+}
+_GUTTER_LIGHT = {
+    "bg":      QColor("#eef1f6"),   # soft grey, a touch darker than white
+    "active":  QColor("#0078d4"),   # accent blue — current line number
+    "normal":  QColor("#9aa3b2"),   # muted slate — other line numbers
+    "current": QColor("#eaf2fb"),   # pale blue current-line highlight band
+}
 
 
 class SQLEditor(QPlainTextEdit):
@@ -143,6 +153,7 @@ class SQLEditor(QPlainTextEdit):
         self._completer: QCompleter | None = None
         self._completer_enabled: bool = True
         self._line_numbers_enabled: bool = True
+        self._dark: bool = True   # gutter palette; updated via set_dark_theme()
 
         # -- Line-number gutter setup ---------------------------------- #
         self._ln_area = _LineNumberArea(self)
@@ -187,13 +198,27 @@ class SQLEditor(QPlainTextEdit):
                   self._line_number_area_width(), cr.height())
         )
 
+    def set_dark_theme(self, dark: bool) -> None:
+        """Switch the gutter / current-line palette to match the app theme."""
+        if dark == self._dark:
+            return
+        self._dark = dark
+        self._highlight_current_line()
+        self._ln_area.update()
+        self.viewport().update()
+
+    @property
+    def _gutter(self) -> dict:
+        """The active gutter colour set for the current theme."""
+        return _GUTTER_DARK if self._dark else _GUTTER_LIGHT
+
     def _highlight_current_line(self) -> None:
         """Paint a subtle background band on the line containing the cursor."""
         if self.isReadOnly() or not self._line_numbers_enabled:
             self.setExtraSelections([])
             return
         sel = QTextEdit.ExtraSelection()
-        sel.format.setBackground(_CURRENT_LINE)
+        sel.format.setBackground(self._gutter["current"])
         sel.format.setProperty(
             QTextCharFormat.Property.FullWidthSelection, True  # type: ignore[attr-defined]
         )
@@ -203,8 +228,9 @@ class SQLEditor(QPlainTextEdit):
 
     def _paint_line_numbers(self, event) -> None:
         """Called by _LineNumberArea.paintEvent — draw line numbers in the gutter."""
+        gutter = self._gutter
         painter = QPainter(self._ln_area)
-        painter.fillRect(event.rect(), _GUTTER_BG)
+        painter.fillRect(event.rect(), gutter["bg"])
 
         block        = self.firstVisibleBlock()
         block_num    = block.blockNumber()
@@ -219,7 +245,7 @@ class SQLEditor(QPlainTextEdit):
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 painter.setPen(
-                    _GUTTER_ACTIVE if block_num == current_line else _GUTTER_NORMAL
+                    gutter["active"] if block_num == current_line else gutter["normal"]
                 )
                 painter.drawText(
                     0, top, gutter_w - 4, line_h,
@@ -431,3 +457,7 @@ class EditorTab(QWidget):
     def set_line_numbers_enabled(self, enabled: bool) -> None:
         """Show or hide the line-number gutter."""
         self.editor.set_line_numbers_enabled(enabled)
+
+    def set_dark_theme(self, dark: bool) -> None:
+        """Match the editor gutter / current-line highlight to the app theme."""
+        self.editor.set_dark_theme(dark)

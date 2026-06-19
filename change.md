@@ -1,5 +1,18 @@
 # Changelog
 
+### 1.0.3
+- **Fixed — passwords with special characters** — passwords containing `$`, `@`, `#`, `%`, `&`, spaces, and other characters that break DSN-style connection strings now work reliably. Coruscant has always used psycopg2 keyword-argument connections (never DSN strings), so the wire protocol was never the issue; the fix adds `inputMethodHints` (`ImhHiddenText | ImhNoPredictiveText | ImhNoAutoUppercase | ImhSensitiveData`) to the password field so IME, autocorrect, and autocapitalise on all platforms cannot silently alter what the user typed.
+- **Improved — show/hide password toggle** — a 👁 button beside the password field lets users reveal what they typed before clicking Test or Connect, eliminating guesswork when a password contains hard-to-distinguish characters.
+- **Tests — special-character password coverage** — four new test cases verify that passwords such as `password$1` survive the full encode → serialise → deserialise → `connect_params()` round-trip intact.
+- **Version Update** — bumped application version to 1.0.3.
+
+
+### 1.0.2
+- **New — startup splash screen** — frozen Windows/Linux builds now show a branded splash the instant the executable is launched, rendered by the PyInstaller bootloader *before* Python starts. This covers the one-file unpack and Qt initialisation delay that previously left users staring at a blank desktop. The splash caption updates through startup ("Loading interface…", "Restoring your session…") and closes as soon as the main window appears. The splash is automatically a no-op when running from source (`python main.py`) and on the macOS `.app` bundle, where PyInstaller splashes are unsupported.
+- **Improved — Script Manager opens instantly** — the Support Script Manager's knowledge graph (a multi-megabyte gzip-compressed JSON file) is now loaded once in a background thread at application startup instead of synchronously the first time the dialog is opened. Opening the Script Manager — including the automatic error-driven suggestion popup — no longer freezes the UI while the graph decodes. The cached graph stays in sync after uploads and clears.
+- **Version Update** — bumped application version to 1.0.2 across all components and documentation.
+
+
 ### 1.0.1
 - **Fixed:** `_on_results`, `_on_query_error`, `_on_query_cancelled`, and `_on_explain_results` were accidentally removed from `MainWindow` in 1.0.0, causing a crash on every query execution (regression from 1.0.0).
 - **Fixed:** `merge_connections()` incremented the `updated` counter on no-op merges where nothing actually changed.

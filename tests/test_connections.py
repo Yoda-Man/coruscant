@@ -382,6 +382,57 @@ class TestPasswordEncoding:
         pw = "pässwörd"
         assert _decode_password(_encode_password(pw)) == pw
 
+    # --- Special-character passwords ----------------------------------------
+    # psycopg2 keyword-arg connections handle these natively; what matters here
+    # is that the storage layer (base64 encode/decode) never corrupts them.
+
+    def test_dollar_sign_password(self):
+        """password$1 — the ethepass2 dev password — must survive a round-trip."""
+        from coruscant.core.connections import _encode_password, _decode_password
+        pw = "password$1"
+        assert _decode_password(_encode_password(pw)) == pw
+
+    def test_multiple_special_chars(self):
+        """Common chars that break DSN-style connection strings must be fine here."""
+        from coruscant.core.connections import _encode_password, _decode_password
+        for pw in [
+            "p@ssword",       # @ can confuse user@host DSN parsing
+            "pass word",      # space
+            "p#ss!word",      # hash + exclamation
+            "p&ss=word",      # & and = break query-string parsers
+            "p%ssword",       # percent (URL-encoding sentinel)
+            "p/ss\\word",     # slashes
+            "p'ss\"word",     # quotes
+            "p$$word",        # double-dollar (PostgreSQL dollar-quoting)
+            "£€¥",            # non-ASCII symbols
+        ]:
+            assert _decode_password(_encode_password(pw)) == pw, f"Failed for: {pw!r}"
+
+    def test_special_char_password_in_connect_params(self):
+        """connect_params() must return the raw password unchanged — no quoting."""
+        from coruscant.core.connections import SavedConnection
+        pw = "password$1"
+        c = SavedConnection(name="T", host="h", database="db", user="u", password=pw)
+        assert c.connect_params()["password"] == pw
+
+    def test_special_char_password_serialise_round_trip(self):
+        """Passwords with special chars survive serialise → deserialise."""
+        from coruscant.core.connections import (
+            SavedConnection, serialise_connections, deserialise_connections,
+        )
+        original = [
+            SavedConnection(
+                name="ethepass-dev",
+                host="localhost",
+                database="epass-dev",
+                user="u_ethepass",
+                password="password$1",
+            )
+        ]
+        packed = serialise_connections(original)
+        unpacked = deserialise_connections(packed)
+        assert unpacked[0].password == "password" + "$" + "1"
+
 
 # ---------------------------------------------------------------------------
 # parse_pgadmin_export (dict form)

@@ -51,6 +51,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QSettings
 
 from coruscant.core.database import DatabaseManager
+from coruscant.ui.style import header_button_style, SPACE_XS, HEIGHT_HEADER_BTN
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +83,7 @@ class SchemaBrowser(QWidget):
     autocomplete_changed: Signal = Signal(bool)
     autoclose_changed:    Signal = Signal(bool)
     guide_requested:      Signal = Signal()
+    about_requested:      Signal = Signal()
     scripts_requested:    Signal = Signal()
     line_numbers_changed: Signal = Signal(bool)
 
@@ -95,48 +97,53 @@ class SchemaBrowser(QWidget):
 
     # ── Construction ─────────────────────────────────────────────────── #
 
+    def _make_header_button(self, label: str, tip: str,
+                            checkable: bool = False) -> QPushButton:
+        """Create a header button with the shared, consistent header style."""
+        btn = QPushButton(label)
+        btn.setFixedHeight(HEIGHT_HEADER_BTN)
+        btn.setStyleSheet(header_button_style())
+        btn.setToolTip(tip)
+        if checkable:
+            btn.setCheckable(True)
+        return btn
+
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(SPACE_XS, SPACE_XS, SPACE_XS, SPACE_XS)
+        layout.setSpacing(SPACE_XS)
 
         header = QHBoxLayout()
+        header.setSpacing(SPACE_XS)
         header.addWidget(QLabel("<b>Schema Browser</b>",
                                 styleSheet="font-size: 11px;"))
         header.addStretch()
-        self._refresh_btn = QPushButton("Refresh")
-        self._refresh_btn.setFixedHeight(22)
-        self._refresh_btn.setStyleSheet("font-size: 10px; padding: 0 6px;")
+
+        # All header controls share one consistent style (see coruscant.ui.style).
+        self._refresh_btn = self._make_header_button(
+            "↻ Refresh", "Reload the schema tree")
         self._refresh_btn.clicked.connect(self.refresh)
         header.addWidget(self._refresh_btn)
 
-        self._scripts_btn = QPushButton("📜 Scripts")
-        self._scripts_btn.setFixedHeight(22)
-        self._scripts_btn.setStyleSheet(
-            "font-size: 10px; padding: 0 6px;"
-            " background: #1A237E; color: #90CAF9;"
-            " border: 1px solid #283593; border-radius: 3px;"
-        )
-        self._scripts_btn.setToolTip("Open Support Script Manager")
+        self._scripts_btn = self._make_header_button(
+            "📜 Scripts", "Open Support Script Manager")
         self._scripts_btn.clicked.connect(lambda: self.scripts_requested.emit())
         header.addWidget(self._scripts_btn)
-        self._settings_btn = QPushButton("⚙ Settings")
-        self._settings_btn.setFixedHeight(22)
-        self._settings_btn.setStyleSheet("font-size: 10px; padding: 0 6px;")
-        self._settings_btn.setCheckable(True)
+
+        self._settings_btn = self._make_header_button(
+            "⚙ Settings", "Toggle the settings panel", checkable=True)
         self._settings_btn.clicked.connect(self._toggle_settings_panel)
         header.addWidget(self._settings_btn)
 
-        self._guide_btn = QPushButton("? Guide")
-        self._guide_btn.setFixedHeight(22)
-        self._guide_btn.setStyleSheet(
-            "font-size: 10px; padding: 0 6px;"
-            " background: #1A237E; color: #90CAF9;"
-            " border: 1px solid #283593; border-radius: 3px;"
-        )
-        self._guide_btn.setToolTip("Open the Coruscant quick-reference guide")
+        self._guide_btn = self._make_header_button(
+            "📖 Guide", "Open the Coruscant quick-reference guide")
         self._guide_btn.clicked.connect(lambda: self.guide_requested.emit())
         header.addWidget(self._guide_btn)
+
+        self._about_btn = self._make_header_button(
+            "ℹ About", "About Coruscant — version, licence, and credits")
+        self._about_btn.clicked.connect(lambda: self.about_requested.emit())
+        header.addWidget(self._about_btn)
         layout.addLayout(header)
 
         # ── Settings panel (hidden by default) ──────────────────────── #

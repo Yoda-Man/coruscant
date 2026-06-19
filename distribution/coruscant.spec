@@ -36,6 +36,24 @@ a = Analysis(
 pyz = PYZ(a.pure)
 
 
+# ── Startup splash screen ──────────────────────────────────────────── #
+# Rendered by the PyInstaller C bootloader *before* Python starts, so it
+# covers the slow one-file unpack + Qt DLL load — exactly the dead time the
+# user sees as a blank screen. NOTE: PyInstaller's Splash is supported on
+# Windows and Linux only; it is not available for macOS .app bundles.
+splash = None
+if sys.platform != 'darwin':
+    splash = Splash(
+        os.path.join(project_root, 'docs', 'splash.png'),
+        binaries=a.binaries,
+        datas=a.datas,
+        text_pos=(16, 250),
+        text_size=9,
+        text_color='white',
+        always_on_top=True,
+    )
+
+
 if sys.platform == 'darwin':
     # macOS: directory-based .app bundle (required for proper macOS apps).
     # The build script zips this into Coruscant-macOS.zip for distribution.
@@ -70,8 +88,8 @@ if sys.platform == 'darwin':
         info_plist={
             'CFBundleName':             'Coruscant',
             'CFBundleDisplayName':      'Coruscant',
-            'CFBundleShortVersionString': '1.0.1',
-            'CFBundleVersion':          '1.0.1',
+            'CFBundleShortVersionString': '1.0.2',
+            'CFBundleVersion':          '1.0.2',
             'NSHighResolutionCapable':  True,
             'NSPrincipalClass':         'NSApplication',
             'NSRequiresAquaSystemAppearance': False,
@@ -86,6 +104,8 @@ else:
         a.binaries,
         a.zipfiles,
         a.datas,
+        splash,
+        splash.binaries,
         [],
         name='Coruscant',
         icon=os.path.join(project_root, 'docs', 'icon.ico'),

@@ -499,7 +499,7 @@ class SchemaBrowser(QWidget):
         if kind == "schema":
             schema = data["schema"]
             menu = QMenu(self._tree)
-            menu.addAction("Generate ERD",  lambda: self._generate_erd(schema))
+            menu.addAction("📐 Generate ERD", lambda: self._generate_erd(schema))
             menu.addAction("\U0001f5fa Mind Map",   lambda: self._open_mind_map(schema, None))
             menu.addAction("\U0001f50d QA Engine",  lambda: self._run_qa(schema))
             menu.exec(self._tree.viewport().mapToGlobal(pos))
@@ -653,9 +653,12 @@ class SchemaBrowser(QWidget):
             return
 
         def _safe(t: str) -> str:
-            """Strip characters Mermaid doesn't allow in type names."""
-            return (t.replace(" ", "_").replace("(", "").replace(")", "")
-                     .replace(",", "").replace('"', ""))
+            """Strip / replace characters Mermaid doesn't allow in type names."""
+            return (t.replace(" ", "_").replace("-", "_")
+                     .replace("(", "").replace(")", "")
+                     .replace(",", "").replace('"', "")
+                     .replace("[", "").replace("]", "")
+                     .replace(":", "_").replace("/", "_"))
 
         lines_mmd = ["erDiagram"]
         for tname in sorted(tables):
@@ -670,7 +673,7 @@ class SchemaBrowser(QWidget):
             pair = (parent_table, child_table)
             if pair not in seen and parent_table in tables and child_table in tables:
                 seen.add(pair)
-                lines_mmd.append(f'    {parent_table} ||--o{{{{ {child_table} : " "')
+                lines_mmd.append(f'    {parent_table} ||--o{{ {child_table} : "fk"')
 
         mermaid = "\n".join(lines_mmd)
 

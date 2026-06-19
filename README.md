@@ -34,7 +34,7 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Parameterised queries done right:** values pass through `cursor.mogrify()` — never string-concatenated. SQL injection is structurally impossible when the Parameters panel is used.
 
-**Special characters in passwords work correctly — always.** Coruscant calls `psycopg2.connect()` with keyword arguments (`host=`, `password=`, …) rather than constructing a URI or DSN string. This is the key architectural difference from tools like pgAdmin, which build a `postgresql://user:password@host/db` URI internally: the moment a password contains `$`, `@`, `%`, `&`, or `/`, URI construction breaks because those characters carry syntactic meaning in a URL. Coruscant never builds a URI. The password is an opaque Python string from the moment you type it to the moment it reaches the PostgreSQL wire protocol — no parsing, no escaping, no shell expansion. Modern DevOps pipelines and cloud credential managers (AWS RDS, Azure Database, HashiCorp Vault) generate passwords that almost always include special characters; Coruscant handles them without any workaround. A `👁` toggle in the connection dialog lets you reveal the password field to verify what you typed before connecting.
+**Special characters in passwords work correctly — always.** Coruscant calls `psycopg2.connect()` with keyword arguments (`host=`, `password=`, …) rather than constructing a URI or DSN string. The password is an opaque Python string from the moment you type it to the moment it reaches the PostgreSQL wire protocol — no parsing, no escaping, no shell expansion. Modern DevOps pipelines and cloud credential managers (AWS RDS, Azure Database, HashiCorp Vault) generate passwords that almost always include special characters; Coruscant handles them correctly by design. A `👁` toggle in the connection dialog lets you reveal the password field to verify what you typed before connecting.
 
 **Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat", entirely offline, no LLM required.
 
@@ -189,7 +189,7 @@ Click **Connections** to open the connection manager. Import a pgAdmin JSON expo
 | `require` | Always use SSL |
 | `verify-full` | SSL + verify certificate + hostname |
 
-**Password field:** the password is always treated as a raw string — no URI construction, no shell expansion. Passwords containing `$`, `@`, `%`, `&`, `/`, spaces, or any other special character are passed directly to the PostgreSQL driver via keyword argument and work without any escaping or workaround. Click the **👁** button beside the field to reveal what you typed and verify it before connecting.
+**Password field:** the password is always treated as a raw string — no URI construction, no shell expansion. Passwords containing `$`, `@`, `%`, `&`, `/`, spaces, or any other special character are passed directly to the PostgreSQL driver via keyword argument. Click the **👁** button beside the field to reveal what you typed and verify it before connecting.
 
 Passwords are base64-encoded in the OS settings store. Not encrypted — treat the store as sensitive.
 
@@ -403,7 +403,7 @@ Enable verbose logging: `CORUSCANT_LOG_LEVEL=DEBUG python main.py`
 
 ## Security Notes
 
-- **Passwords with special characters are handled correctly.** The connection uses `psycopg2.connect()` keyword arguments — not a URI or DSN string — so characters like `$`, `@`, `%`, `&`, `/`, and spaces are passed to the PostgreSQL driver as-is. No escaping, no workarounds needed. This is important for auto-generated passwords from cloud providers and secret managers, which routinely include these characters.
+- **Passwords with special characters are handled correctly.** The connection uses `psycopg2.connect()` keyword arguments — not a URI or DSN string — so characters like `$`, `@`, `%`, `&`, `/`, and spaces are passed to the PostgreSQL driver as-is. This matters for auto-generated passwords from cloud providers and secret managers, which routinely include these characters.
 - Passwords are base64-encoded in the OS settings store, not encrypted. Treat the store as sensitive.
 - Use `verify-full` SSL for production connections over untrusted networks.
 - The Script Manager never executes uploaded scripts during indexing; analysis is text-only.
@@ -418,7 +418,7 @@ Enable verbose logging: `CORUSCANT_LOG_LEVEL=DEBUG python main.py`
 | No `.pgpass` support | Connection parameters must be entered manually |
 | Script Manager graph | Built with NetworkX; requires `pip install networkx>=2.6` |
 
-> **Not a limitation:** passwords containing `$`, `@`, `%`, or any other special character. Coruscant handles these correctly without any workaround.
+> **Not a limitation:** passwords containing `$`, `@`, `%`, or any other special character. Coruscant handles these correctly by design.
 
 ## Changelog
 

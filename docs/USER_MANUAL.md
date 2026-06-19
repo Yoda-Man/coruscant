@@ -253,7 +253,7 @@ Click **Connect** in the toolbar. The connection dialog opens.
 | **Password** | Your password — any characters, including `$`, `@`, `%`, `&`, `/`, and spaces | *(required)* |
 | **SSL mode** | Encryption level (see [Section 4.3](#43-ssl-mode)) | `prefer` |
 
-**Passwords with special characters** work without any escaping or workaround. Coruscant passes the password directly to the PostgreSQL driver as a raw string — it never constructs a URI or DSN where special characters carry syntactic meaning. Auto-generated passwords from cloud providers (AWS RDS, Azure, HashiCorp Vault) and corporate password managers routinely include `$`, `@`, and `%`; all of these work as-is.
+**Passwords with special characters** work correctly. Coruscant passes the password directly to the PostgreSQL driver as a raw string via keyword argument — it never constructs a URI or DSN string. Auto-generated passwords from cloud providers (AWS RDS, Azure, HashiCorp Vault) and corporate password managers routinely include `$`, `@`, and `%`; all of these work as-is.
 
 Click the **👁** button to the right of the Password field to reveal what you typed and confirm it is correct before connecting. This is particularly useful for long or complex passwords where a typo is hard to spot. Click **👁** again to hide it.
 
@@ -1044,7 +1044,7 @@ This can happen if the password contains special characters and was entered inco
 2. Verify that the password matches what your credential manager or administrator provided — check for truncated `$` or `%` characters, extra spaces, or autocorrected characters.
 3. Clear the field, retype (or paste) the password, then click **👁** to confirm it looks right before clicking **Test Connection**.
 
-Coruscant itself does not modify passwords — characters like `$`, `@`, `%`, and spaces are passed verbatim to PostgreSQL. If the test connection succeeds in Coruscant but fails in another tool, the other tool may be mishandling the password (a known issue with pgAdmin's URI-based connection builder).
+Coruscant itself does not modify passwords — characters like `$`, `@`, `%`, and spaces are passed verbatim to PostgreSQL.
 
 ---
 
@@ -1060,7 +1060,7 @@ Coruscant is designed to accept any password your security policy or credential 
 psycopg2.connect(host=..., port=..., dbname=..., user=..., password=...)
 ```
 
-The password is passed as a plain Python string and reaches the PostgreSQL wire protocol without any parsing, URI construction, or shell expansion. Tools that build a connection URI (`postgresql://user:password@host/db`) instead must URL-encode the password, and many do this incorrectly or incompletely — `$` gets treated as the start of an environment variable, `@` splits the authority component, and `%` triggers URL-decoding. Coruscant avoids this entire class of bug by design.
+The password is passed as a plain Python string and reaches the PostgreSQL wire protocol without any parsing, URI construction, or shell expansion. This means there is no encoding step between what you type and what PostgreSQL receives — no URL-percent-encoding, no environment variable expansion, no shell interpretation of special characters.
 
 **Verifying what you typed:** click the **👁** button beside the Password field at any time to reveal the password in plain text. Click it again to hide it. Use this before clicking Test Connection if you are not certain the field contains what you intended — particularly when pasting from a password manager or typing a complex password on an unfamiliar keyboard.
 
@@ -1139,9 +1139,7 @@ See [§11 Mind Map](#11-mind-map) for the full reference.
 
 ### Why This Matters
 
-Modern security policies (PCI-DSS, HIPAA, SOC 2) require passwords to include special characters. Cloud databases and secret managers — AWS RDS, Azure Database, HashiCorp Vault — generate passwords that almost always include `$`, `@`, `%`, `&`, and similar characters. A database client that fails on these forces you to weaken your passwords to fit the tool. That is the wrong trade-off.
-
-Coruscant has always used the correct underlying approach (psycopg2 keyword arguments, never URI construction), so the wire-level connection was already correct. Version 1.0.3 adds the remaining pieces to make the full experience reliable.
+Modern security policies (PCI-DSS, HIPAA, SOC 2) require passwords to include special characters. Cloud databases and secret managers — AWS RDS, Azure Database, HashiCorp Vault — generate passwords that almost always include `$`, `@`, `%`, `&`, and similar characters. Coruscant passes these through correctly because it uses `psycopg2.connect()` keyword arguments — the password reaches PostgreSQL as a raw string with no URI construction, URL-encoding, or shell expansion step in between. Version 1.0.3 adds the remaining pieces to make the full experience reliable at the input layer.
 
 ### New: Show/Hide Password Toggle
 
@@ -1154,12 +1152,6 @@ A **👁** button now sits beside the Password field in the connection dialog. C
 ### Improved: IME and Autocorrect Protection
 
 The password field now explicitly disables predictive text, autocorrection, and automatic capitalisation at the platform level (`ImhHiddenText | ImhNoPredictiveText | ImhNoAutoUppercase | ImhSensitiveData`). On some platforms, input methods would silently alter what you typed — a capital letter added here, a special character swapped there — without any visible indication. This is now prevented.
-
-### How Coruscant Differs from pgAdmin on This Issue
-
-pgAdmin constructs a libpq connection URI internally: `postgresql://user:password@host/db`. In a URI, `$` is the start of an environment variable, `@` separates the credentials from the host, and `%` triggers URL-decoding. When a password contains these characters, pgAdmin's URI parser interprets them as syntax rather than literal characters, silently truncating or mangling the password before it ever reaches PostgreSQL. This is a known, long-standing limitation.
-
-Coruscant calls `psycopg2.connect(password=...)` directly — no URI, no parsing, no interpretation. The password is an opaque string from input to wire protocol.
 
 ---
 

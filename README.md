@@ -10,35 +10,35 @@
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
 
 A lightweight, open-source desktop SQL IDE for PostgreSQL built with Python and PySide6.  
-Run multiple statements in one pass, browse your schema, manage transactions, search your script library, and export results — all in a single window.
+Run multiple statements in one pass, browse your schema, manage transactions, search your script library, and export results all in a single window.
 
 ## Why Coruscant Exists
 
 pgAdmin has a long-standing limitation: when a script contains multiple `SELECT` statements, only the last result is shown. Earlier result sets are silently discarded.
 
-Coruscant solves this directly. Every `SELECT` produces its own dedicated, persistent result tab. Run twenty statements, inspect any of the twenty results, pin the ones you want to keep, and compare them side by side — all without leaving the window.
+Coruscant solves this directly. Every `SELECT` produces its own dedicated, persistent result tab. Run twenty statements, inspect any of the twenty results, pin the ones you want to keep, and compare them side by side all without leaving the window.
 
 ## What Makes This Project Good
 
 **Separate result tab per statement** is the core feature. Three `SELECT`s produce three independently sortable, filterable, exportable grids.
 
-**Clean layered architecture:** `core/` has zero GUI imports. The SQL parser, database manager, and background worker can all be tested without a running Qt application. `MainWindow` is a pure coordinator — it wires signals but contains no SQL logic.
+**Clean layered architecture:** `core/` has zero GUI imports. The SQL parser, database manager, and background worker can all be tested without a running Qt application. `MainWindow` is a pure coordinator it wires signals but contains no SQL logic.
 
-**Background execution with real cancellation:** queries run in a `QThread` worker; the UI never freezes. Cancel sends `pg_cancel_backend()` to PostgreSQL — the *server* stops the query, not just the client.
+**Background execution with real cancellation:** queries run in a `QThread` worker; the UI never freezes. Cancel sends `pg_cancel_backend()` to PostgreSQL the *server* stops the query, not just the client.
 
-**Responsive startup:** packaged builds show a branded splash screen the instant the executable launches — rendered by the bootloader before Python even starts — so there is no blank-desktop wait. The Script Manager's knowledge graph is pre-loaded in the background at startup, so the dialog opens instantly with no UI freeze.
+**Responsive startup:** packaged builds show a branded splash screen the instant the executable launches rendered by the bootloader before Python even starts so there is no blank-desktop wait. The Script Manager's knowledge graph is pre-loaded in the background at startup, so the dialog opens instantly with no UI freeze.
 
 **Inline errors, no modal dialogs:** failed statements open an `ErrorResult` tab alongside successful ones. Read the error, fix the SQL, re-run; your other results stay visible.
 
 **Transactional DDL:** switching off Auto-commit lets you `CREATE TABLE`, inspect the result, and roll the whole thing back. PostgreSQL supports this; Coruscant exposes it properly.
 
-**Parameterised queries done right:** values pass through `cursor.mogrify()` — never string-concatenated. SQL injection is structurally impossible when the Parameters panel is used.
+**Parameterised queries done right:** values pass through `cursor.mogrify()` never string-concatenated. SQL injection is structurally impossible when the Parameters panel is used.
 
-**Special characters in passwords work correctly — always.** Coruscant calls `psycopg2.connect()` with keyword arguments (`host=`, `password=`, …) rather than constructing a URI or DSN string. The password is an opaque Python string from the moment you type it to the moment it reaches the PostgreSQL wire protocol — no parsing, no escaping, no shell expansion. Modern DevOps pipelines and cloud credential managers (AWS RDS, Azure Database, HashiCorp Vault) generate passwords that almost always include special characters; Coruscant handles them correctly by design. A `👁` toggle in the connection dialog lets you reveal the password field to verify what you typed before connecting.
+**Special characters in passwords work correctly always.** Coruscant calls `psycopg2.connect()` with keyword arguments (`host=`, `password=`, …) rather than constructing a URI or DSN string. The password is an opaque Python string from the moment you type it to the moment it reaches the PostgreSQL wire protocol no parsing, no escaping, no shell expansion. Modern DevOps pipelines and cloud credential managers (AWS RDS, Azure Database, HashiCorp Vault) generate passwords that almost always include special characters; Coruscant handles them correctly by design. A `👁` toggle in the connection dialog lets you reveal the password field to verify what you typed before connecting.
 
 **Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat", entirely offline, no LLM required.
 
-**Automated schema health checks (QA Engine):** right-click any schema to run six checks in a background thread — orphaned tables, missing FK indexes (with generated `CREATE INDEX CONCURRENTLY` fix scripts), circular FK cycles, nullable FKs, snake_case naming violations, and type inconsistencies. Results appear in a colour-coded dialog with a 0–100 health score badge. Findings can be suppressed per-table or check-wide, exported to CSV, and used to jump-search the Script Manager.
+**Automated schema health checks (QA Engine):** right-click any schema to run six checks in a background thread orphaned tables, missing FK indexes (with generated `CREATE INDEX CONCURRENTLY` fix scripts), circular FK cycles, nullable FKs, snake_case naming violations, and type inconsistencies. Results appear in a colour-coded dialog with a 0–100 health score badge. Findings can be suppressed per-table or check-wide, exported to CSV, and used to jump-search the Script Manager.
 
 **Entity-Relationship Diagrams (ERD):** right-click any schema and choose Generate ERD to produce a Mermaid `erDiagram` opened as a self-contained HTML page. Every table is shown as an entity box with column names, types, and PK markers; FK relationships are drawn as one-to-many edges. The page includes pan, zoom, and fit controls plus a collapsible Mermaid source panel for copy-paste into any Mermaid editor.
 
@@ -192,9 +192,9 @@ Click **Connections** to open the connection manager. Import a pgAdmin JSON expo
 | `require` | Always use SSL |
 | `verify-full` | SSL + verify certificate + hostname |
 
-**Password field:** the password is always treated as a raw string — no URI construction, no shell expansion. Passwords containing `$`, `@`, `%`, `&`, `/`, spaces, or any other special character are passed directly to the PostgreSQL driver via keyword argument. Click the **👁** button beside the field to reveal what you typed and verify it before connecting.
+**Password field:** the password is always treated as a raw string no URI construction, no shell expansion. Passwords containing `$`, `@`, `%`, `&`, `/`, spaces, or any other special character are passed directly to the PostgreSQL driver via keyword argument. Click the **👁** button beside the field to reveal what you typed and verify it before connecting.
 
-Passwords are base64-encoded in the OS settings store. Not encrypted — treat the store as sensitive.
+Passwords are base64-encoded in the OS settings store. Not encrypted treat the store as sensitive.
 
 ## The Editor
 

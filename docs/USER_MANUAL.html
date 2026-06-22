@@ -135,15 +135,20 @@
     <a href="#111-schema-mind-map" class="toc-sub" style="padding-left:40px">11.1 Schema Mind Map</a>
     <a href="#112-mind-map-from-a-table" class="toc-sub" style="padding-left:40px">11.2 Mind Map from Table</a>
     <a href="#113-navigating-the-map" class="toc-sub" style="padding-left:40px">11.3 Navigating the Map</a>
-    <a href="#12-query-history" class="toc-sub">12. Query History</a>
-    <a href="#13-parameterized-queries" class="toc-sub">13. Parameterized Queries</a>
-    <a href="#14-explain-and-query-plans" class="toc-sub">14. EXPLAIN and Query Plans</a>
-    <a href="#15-themes" class="toc-sub">15. Themes</a>
-    <a href="#16-logging" class="toc-sub">16. Logging</a>
-    <a href="#17-support-script-manager" class="toc-sub">17. Support Script Manager</a>
-    <a href="#18-keyboard-shortcuts-reference" class="toc-sub">18. Keyboard Shortcuts Reference</a>
-    <a href="#19-troubleshooting" class="toc-sub">19. Troubleshooting</a>
-    <a href="#20-security-guidance" class="toc-sub">20. Security Guidance</a>
+    <a href="#12-erd" class="toc-sub">12. ERD</a>
+    <a href="#121-generating-an-erd" class="toc-sub" style="padding-left:40px">12.1 Generating an ERD</a>
+    <a href="#122-what-the-diagram-shows" class="toc-sub" style="padding-left:40px">12.2 What the Diagram Shows</a>
+    <a href="#123-navigating-the-erd" class="toc-sub" style="padding-left:40px">12.3 Navigating the ERD</a>
+    <a href="#124-saving-the-erd" class="toc-sub" style="padding-left:40px">12.4 Saving the ERD</a>
+    <a href="#13-query-history" class="toc-sub">13. Query History</a>
+    <a href="#14-parameterized-queries" class="toc-sub">14. Parameterized Queries</a>
+    <a href="#15-explain-and-query-plans" class="toc-sub">15. EXPLAIN and Query Plans</a>
+    <a href="#16-themes" class="toc-sub">16. Themes</a>
+    <a href="#17-logging" class="toc-sub">17. Logging</a>
+    <a href="#18-support-script-manager" class="toc-sub">18. Support Script Manager</a>
+    <a href="#19-keyboard-shortcuts-reference" class="toc-sub">19. Keyboard Shortcuts Reference</a>
+    <a href="#20-troubleshooting" class="toc-sub">20. Troubleshooting</a>
+    <a href="#21-security-guidance" class="toc-sub">21. Security Guidance</a>
     <a href="#whats-new-104" class="toc-sub">What's New in 1.0.4</a>
     <a href="#whats-new-103" class="toc-sub">What's New in 1.0.3</a>
   </div>
@@ -218,15 +223,20 @@
 <li>11.1 <a href="#111-schema-mind-map">Schema Mind Map</a></li>
 <li>11.2 <a href="#112-mind-map-from-a-table">Mind Map from a Table</a></li>
 <li>11.3 <a href="#113-navigating-the-map">Navigating the Map</a></li>
-<li><a href="#12-query-history">Query History</a></li>
-<li><a href="#13-parameterized-queries">Parameterized Queries</a></li>
-<li><a href="#14-explain-and-query-plans">EXPLAIN and Query Plans</a></li>
-<li><a href="#15-themes">Themes</a></li>
-<li><a href="#16-logging">Logging</a></li>
-<li><a href="#17-support-script-manager">Support Script Manager</a></li>
-<li><a href="#18-keyboard-shortcuts-reference">Keyboard Shortcuts Reference</a></li>
-<li><a href="#19-troubleshooting">Troubleshooting</a></li>
-<li><a href="#20-security-guidance">Security Guidance</a></li>
+<li><a href="#12-erd">ERD</a></li>
+<li>12.1 <a href="#121-generating-an-erd">Generating an ERD</a></li>
+<li>12.2 <a href="#122-what-the-diagram-shows">What the Diagram Shows</a></li>
+<li>12.3 <a href="#123-navigating-the-erd">Navigating the ERD</a></li>
+<li>12.4 <a href="#124-saving-the-erd">Saving the ERD</a></li>
+<li><a href="#13-query-history">Query History</a></li>
+<li><a href="#14-parameterized-queries">Parameterized Queries</a></li>
+<li><a href="#15-explain-and-query-plans">EXPLAIN and Query Plans</a></li>
+<li><a href="#16-themes">Themes</a></li>
+<li><a href="#17-logging">Logging</a></li>
+<li><a href="#18-support-script-manager">Support Script Manager</a></li>
+<li><a href="#19-keyboard-shortcuts-reference">Keyboard Shortcuts Reference</a></li>
+<li><a href="#20-troubleshooting">Troubleshooting</a></li>
+<li><a href="#21-security-guidance">Security Guidance</a></li>
 </ol>
 <hr />
 <h2 id="1-introduction" class="section-anchor">1. Introduction</h2>
@@ -920,7 +930,7 @@ WHERE &quot;id&quot; = ;
 </ul>
 <p>Rules are saved in QSettings and persist across sessions. To manage or remove rules, click <strong>&#x1F515; Manage Suppressions</strong>.</p>
 <h3 id="104-finding-scripts-for-a-finding">10.4 Finding Scripts for a Finding</h3>
-<p>Select a finding and click <strong>&#x1F50E; Find Scripts</strong>. The Script Manager opens pre-searched with the check name, table, and column. Requires a script index to be loaded first &mdash; see <a href="#17-support-script-manager">§17</a>.</p>
+<p>Select a finding and click <strong>&#x1F50E; Find Scripts</strong>. The Script Manager opens pre-searched with the check name, table, and column. Requires a script index to be loaded first &mdash; see <a href="#18-support-script-manager">§18</a>.</p>
 <h3 id="105-exporting-findings-to-csv">10.5 Exporting Findings to CSV</h3>
 <p>Click <strong>&#x1F4C4; Export CSV</strong> to save all findings (including suppressed ones) to a CSV file. Columns: <code>schema</code>, <code>check</code>, <code>severity</code>, <code>table</code>, <code>column</code>, <code>message</code>, <code>fix_sql</code>.</p>
 <h3 id="106-auto-qa-on-connect">10.6 Auto-QA on Connect</h3>
@@ -953,7 +963,37 @@ WHERE &quot;id&quot; = ;
 </table>
 <p>The map is a single <code>.html</code> file you can save from your browser (File &rarr; Save Page As) to share or keep as a schema snapshot.</p>
 <hr />
-<h2 id="12-query-history" class="section-anchor">12. Query History</h2>
+<h2 id="12-erd" class="section-anchor">12. ERD</h2>
+<p>The <strong>ERD</strong> (Entity-Relationship Diagram) feature generates a Mermaid ER diagram for every table in a schema and opens it as a self-contained HTML page in your default web browser.</p>
+<h3 id="121-generating-an-erd">12.1 Generating an ERD</h3>
+<p>Right-click any <strong>schema</strong> in the Schema Browser tree and choose <strong>&#x1F4D0; Generate ERD</strong>. Coruscant queries the database for column definitions, primary-key markers, and foreign-key relationships, then renders the diagram immediately. A status message at the bottom of the Schema Browser confirms how many tables and relationships were found.</p>
+<h3 id="122-what-the-diagram-shows">12.2 What the Diagram Shows</h3>
+<p>Each table becomes an entity box containing:</p>
+<ul>
+<li>Every column name and its PostgreSQL data type.</li>
+<li>A <code>PK</code> marker next to primary-key columns.</li>
+</ul>
+<p>Foreign-key relationships are drawn as one-to-many connector lines between the parent and child tables (Mermaid <code>||--o{</code> notation). Each unique table-pair produces one edge regardless of how many FK columns link them.</p>
+<h3 id="123-navigating-the-erd">12.3 Navigating the ERD</h3>
+<table>
+<thead><tr><th>Control</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><strong>Scroll wheel</strong></td><td>Zoom in / out</td></tr>
+<tr><td><strong>Click and drag</strong> (background)</td><td>Pan the diagram</td></tr>
+<tr><td><strong>&#xFF0B; Zoom in</strong> button</td><td>Increases zoom by 25 %</td></tr>
+<tr><td><strong>&#xFF0D; Zoom out</strong> button</td><td>Decreases zoom by 25 %</td></tr>
+<tr><td><strong>&#x2299; Reset</strong> button</td><td>Restores the original zoom level and centres the diagram</td></tr>
+<tr><td><strong>&#x229E; Fit</strong> button</td><td>Scales the diagram to fill the browser window</td></tr>
+</tbody>
+</table>
+<p>A collapsible <strong>▶ Mermaid source</strong> panel at the bottom of the page shows the raw <code>erDiagram</code> definition. You can copy it into any Mermaid-compatible editor (e.g. mermaid.live) for further customisation.</p>
+<h3 id="124-saving-the-erd">12.4 Saving the ERD</h3>
+<p>The ERD is written to a temporary <code>.html</code> file (named <code>coruscant_erd_&lt;schema&gt;_&lt;random&gt;.html</code>) and opened in your browser. Use <strong>File &rarr; Save Page As</strong> in the browser to keep a permanent copy — useful as a schema snapshot or for sharing with colleagues who don't have Coruscant installed.</p>
+<blockquote>
+<p><strong>Note:</strong> The diagram uses Mermaid.js and svg-pan-zoom loaded from a CDN (<code>cdn.jsdelivr.net</code>). An internet connection is required when opening the file for the first time; subsequent opens from the same saved file will also need connectivity unless you embed the scripts locally.</p>
+</blockquote>
+<hr />
+<h2 id="13-query-history" class="section-anchor">13. Query History</h2>
 <p>The <strong>Query History</strong> panel is at the bottom of the left dock, below the Schema Browser.</p>
 <p>It stores the last <strong>100</strong> queries you have successfully executed, along with:
 - The first 80 characters of the SQL (as a preview).
@@ -969,7 +1009,7 @@ WHERE &quot;id&quot; = ;
 <p>Consecutive identical queries are deduplicated. Re-running the same SQL updates the timestamp rather than adding a new entry.</p>
 </blockquote>
 <hr />
-<h2 id="13-parameterized-queries" class="section-anchor">13. Parameterized Queries</h2>
+<h2 id="14-parameterized-queries" class="section-anchor">14. Parameterized Queries</h2>
 <p>Parameterized queries let you write SQL with named placeholders and supply the values separately. This is safer than string-concatenating values into SQL, and makes it easy to re-run the same query with different inputs.</p>
 <h3 id="syntax">Syntax</h3>
 <p>Use <code>%(name)s</code> placeholders in your SQL:</p>
@@ -1016,7 +1056,7 @@ WHERE customer_id = %(customer_id)s
 <h3 id="removing-parameters">Removing Parameters</h3>
 <p>Select a row in the Parameters panel and click <strong>Remove Row</strong>.</p>
 <hr />
-<h2 id="14-explain-and-query-plans" class="section-anchor">14. EXPLAIN and Query Plans</h2>
+<h2 id="15-explain-and-query-plans" class="section-anchor">15. EXPLAIN and Query Plans</h2>
 <p>EXPLAIN shows how PostgreSQL plans to execute a query without actually running it (for <code>EXPLAIN</code>) or by running it and reporting real statistics (for <code>EXPLAIN+</code>).</p>
 <h3 id="explain">Explain</h3>
 <p>Click <strong>Explain</strong> in the toolbar. Coruscant prepends <code>EXPLAIN</code> to the first statement in the editor and runs it. The query plan appears in an <strong>ExplainResult</strong> tab as formatted text.</p>
@@ -1036,7 +1076,7 @@ Execution Time: 0.3 ms
 <p>Only the <strong>first statement</strong> in the editor is explained, even if multiple statements are present.</p>
 </blockquote>
 <hr />
-<h2 id="15-themes" class="section-anchor">15. Themes</h2>
+<h2 id="16-themes" class="section-anchor">16. Themes</h2>
 <p>Click the <strong>🌙</strong> (dark) or <strong>☀</strong> (light) button on the right side of the toolbar to switch themes.</p>
 <table>
 <thead>
@@ -1058,7 +1098,7 @@ Execution Time: 0.3 ms
 </table>
 <p>Your preference is saved automatically and restored the next time you launch Coruscant.</p>
 <hr />
-<h2 id="16-logging" class="section-anchor">16. Logging</h2>
+<h2 id="17-logging" class="section-anchor">17. Logging</h2>
 <p>Coruscant writes a diagnostic log on every run. This is useful when
 troubleshooting connection problems or unexpected behaviour.</p>
 <h3 id="log-file-location">Log file location</h3>
@@ -1140,7 +1180,7 @@ python main.py
 <pre><code class="language-powershell">Select-String -Path &quot;$env:APPDATA\Coruscant\logs\coruscant.log&quot; -Pattern &quot;ERROR|WARNING|CRITICAL&quot;
 </code></pre>
 <hr />
-<h2 id="17-support-script-manager" class="section-anchor">17. Support Script Manager</h2>
+<h2 id="18-support-script-manager" class="section-anchor">18. Support Script Manager</h2>
 <p>See <a href="SCRIPT_MANAGER.md">docs/SCRIPT_MANAGER.md</a> for full documentation.</p>
 <p><strong>Opening the Script Manager:</strong> click <strong>📜 Scripts</strong> in the Schema Browser panel.</p>
 <p><strong>Uploading a script collection:</strong> click <strong>⬆ Upload Scripts ZIP</strong> and select a  file
@@ -1183,7 +1223,7 @@ into the active SQL editor tab.</p>
 <p>The engine weights <code>@desc</code> and <code>@fixes</code> tags at 5×, filename tokens at 3×,
 and SQL body text at 1×.</p>
 <hr />
-<h2 id="18-keyboard-shortcuts-reference" class="section-anchor">18. Keyboard Shortcuts Reference</h2>
+<h2 id="19-keyboard-shortcuts-reference" class="section-anchor">19. Keyboard Shortcuts Reference</h2>
 <table>
 <thead>
 <tr>
@@ -1238,10 +1278,10 @@ and SQL body text at 1×.</p>
 </tr>
 </tbody>
 </table>
-<h2 id="19-troubleshooting" class="section-anchor">19. Troubleshooting</h2>
+<h2 id="20-troubleshooting" class="section-anchor">20. Troubleshooting</h2>
 <blockquote>
 <p><strong>Before troubleshooting any issue:</strong> check the log file first — it records
-every connection attempt, query, and error with timestamps. See <a href="#16-logging">Section 16</a>
+every connection attempt, query, and error with timestamps. See <a href="#17-logging">Section 16</a>
 for the file location and how to filter it.</p>
 </blockquote>
 <h3 id="could-not-connect-error">"Could not connect" error</h3>
@@ -1300,7 +1340,7 @@ for the file location and how to filter it.</p>
 </ol>
 <p>Coruscant itself does not modify passwords &mdash; characters like <code>$</code>, <code>@</code>, <code>%</code>, and spaces are passed verbatim to PostgreSQL.</p>
 <hr />
-<h2 id="20-security-guidance" class="section-anchor">20. Security Guidance</h2>
+<h2 id="21-security-guidance" class="section-anchor">21. Security Guidance</h2>
 <h3 id="passwords-with-special-characters">Passwords with Special Characters</h3>
 <p>Coruscant is designed to accept any password your security policy or credential manager produces &mdash; including those with <code>$</code>, <code>@</code>, <code>%</code>, <code>&amp;</code>, <code>/</code>, spaces, and Unicode characters. This is not a minor feature; it is a correctness requirement for any tool used in professional environments.</p>
 <p><strong>How it works:</strong> when Coruscant connects to PostgreSQL, it calls the psycopg2 library using named keyword arguments:</p>

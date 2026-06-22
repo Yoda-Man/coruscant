@@ -64,15 +64,15 @@
     - 11.1 [Schema Mind Map](#111-schema-mind-map)
     - 11.2 [Mind Map from a Table](#112-mind-map-from-a-table)
     - 11.3 [Navigating the Map](#113-navigating-the-map)
-12. [Query History](#12-query-history)
-13. [Parameterized Queries](#13-parameterized-queries)
-14. [EXPLAIN and Query Plans](#14-explain-and-query-plans)
-15. [Themes](#15-themes)
-16. [Logging](#16-logging)
-17. [Support Script Manager](#17-support-script-manager)
-18. [Keyboard Shortcuts Reference](#18-keyboard-shortcuts-reference)
-19. [Troubleshooting](#19-troubleshooting)
-20. [Security Guidance](#20-security-guidance)
+14. [Query History](#14-query-history)
+15. [Parameterized Queries](#15-parameterized-queries)
+16. [EXPLAIN and Query Plans](#16-explain-and-query-plans)
+17. [Themes](#17-themes)
+18. [Logging](#18-logging)
+19. [Support Script Manager](#19-support-script-manager)
+20. [Keyboard Shortcuts Reference](#20-keyboard-shortcuts-reference)
+21. [Troubleshooting](#21-troubleshooting)
+21. [Security Guidance](#21-security-guidance)
 
 ---
 
@@ -703,7 +703,7 @@ To review or remove suppression rules, click **🔕 Manage Suppressions**. A dia
 
 Select a finding in the table and click **🔎 Find Scripts**. The Script Manager opens with a pre-populated search query combining the check name, table name, and column name. If you have a script collection indexed, relevant maintenance scripts appear immediately.
 
-> Requires a script index to be loaded first. See [§17](#17-support-script-manager) for setup instructions.
+> Requires a script index to be loaded first. See [§19](#19-support-script-manager) for setup instructions.
 
 ### 10.5 Exporting Findings to CSV
 
@@ -759,7 +759,45 @@ The map is generated as a single `.html` file. You can save it from your browser
 
 ---
 
-## 12. Query History
+## 12. ERD
+
+The **ERD** (Entity-Relationship Diagram) feature generates a Mermaid ER diagram for every table in a schema and opens it as a self-contained HTML page in your default web browser.
+
+### 12.1 Generating an ERD
+
+Right-click any **schema** in the Schema Browser tree and choose **📐 Generate ERD**. Coruscant queries the database for column definitions, primary-key markers, and foreign-key relationships, then renders the diagram immediately. A status message at the bottom of the Schema Browser confirms how many tables and relationships were found.
+
+### 12.2 What the Diagram Shows
+
+Each table becomes an entity box containing:
+
+- Every column name and its PostgreSQL data type.
+- A `PK` marker next to primary-key columns.
+
+Foreign-key relationships are drawn as one-to-many connector lines between the parent and child tables (Mermaid `||--o{` notation). Each unique table-pair produces one edge regardless of how many FK columns link them.
+
+### 12.3 Navigating the ERD
+
+| Control | Action |
+|---|---|
+| **Scroll wheel** | Zoom in / out |
+| **Click and drag** (background) | Pan the diagram |
+| **＋ Zoom in** button | Increases zoom by 25 % |
+| **－ Zoom out** button | Decreases zoom by 25 % |
+| **⊙ Reset** button | Restores the original zoom level and centres the diagram |
+| **⊞ Fit** button | Scales the diagram to fill the browser window |
+
+A collapsible **▶ Mermaid source** panel at the bottom of the page shows the raw `erDiagram` definition. You can copy it into any Mermaid-compatible editor (e.g. mermaid.live) for further customisation.
+
+### 12.4 Saving the ERD
+
+The ERD is written to a temporary `.html` file (named `coruscant_erd_<schema>_<random>.html`) and opened in your browser. Use **File → Save Page As** in the browser to keep a permanent copy — useful as a schema snapshot or for sharing with colleagues who don't have Coruscant installed.
+
+> **Note:** The diagram uses Mermaid.js and svg-pan-zoom loaded from a CDN (`cdn.jsdelivr.net`). An internet connection is required the first time the file is opened.
+
+---
+
+## 13. Query History
 
 The **Query History** panel is at the bottom of the left dock, below the Schema Browser.
 
@@ -780,7 +818,7 @@ It stores the last **100** queries you have successfully executed, along with:
 
 ---
 
-## 13. Parameterized Queries
+## 14. Parameterized Queries
 
 Parameterized queries let you write SQL with named placeholders and supply the values separately. This is safer than string-concatenating values into SQL, and makes it easy to re-run the same query with different inputs.
 
@@ -823,7 +861,7 @@ Select a row in the Parameters panel and click **Remove Row**.
 
 ---
 
-## 14. EXPLAIN and Query Plans
+## 15. EXPLAIN and Query Plans
 
 EXPLAIN shows how PostgreSQL plans to execute a query without actually running it (for `EXPLAIN`) or by running it and reporting real statistics (for `EXPLAIN+`).
 
@@ -854,7 +892,7 @@ Execution Time: 0.3 ms
 
 ---
 
-## 15. Themes  
+## 16. Themes  
 
 Click the **🌙** (dark) or **☀** (light) button on the right side of the toolbar to switch themes.
 
@@ -867,7 +905,7 @@ Your preference is saved automatically and restored the next time you launch Cor
 
 ---
 
-## 16. Logging
+## 17. Logging
 
 Coruscant writes a diagnostic log on every run. This is useful when
 troubleshooting connection problems or unexpected behaviour.
@@ -934,7 +972,7 @@ Select-String -Path "$env:APPDATA\Coruscant\logs\coruscant.log" -Pattern "ERROR|
 
 ---
 
-## 17. Support Script Manager
+## 18. Support Script Manager
 
 See [docs/SCRIPT_MANAGER.md](SCRIPT_MANAGER.md) for full documentation.
 
@@ -966,7 +1004,7 @@ and SQL body text at 1×.
 
 ---
 
-## 18. Keyboard Shortcuts Reference
+## 19. Keyboard Shortcuts Reference
 
 | Shortcut | Action |
 |---|---|
@@ -983,10 +1021,10 @@ and SQL body text at 1×.
 | **Ctrl+Shift+C** *(result grid)* | Copy selected rows with column headers |
 
 
-## 19. Troubleshooting
+## 20. Troubleshooting
 
 > **Before troubleshooting any issue:** check the log file first — it records
-> every connection attempt, query, and error with timestamps. See [Section 14](#14-logging)
+> every connection attempt, query, and error with timestamps. See [Section 14](#16-logging)
 > for the file location and how to filter it.
 
 ### "Could not connect" error
@@ -1048,7 +1086,7 @@ Coruscant itself does not modify passwords — characters like `$`, `@`, `%`, an
 
 ---
 
-## 20. Security Guidance
+## 21. Security Guidance
 
 ### Passwords with Special Characters
 

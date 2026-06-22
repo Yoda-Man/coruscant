@@ -40,6 +40,8 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Automated schema health checks (QA Engine):** right-click any schema to run six checks in a background thread — orphaned tables, missing FK indexes (with generated `CREATE INDEX CONCURRENTLY` fix scripts), circular FK cycles, nullable FKs, snake_case naming violations, and type inconsistencies. Results appear in a colour-coded dialog with a 0–100 health score badge. Findings can be suppressed per-table or check-wide, exported to CSV, and used to jump-search the Script Manager.
 
+**Entity-Relationship Diagrams (ERD):** right-click any schema and choose Generate ERD to produce a Mermaid `erDiagram` opened as a self-contained HTML page. Every table is shown as an entity box with column names, types, and PK markers; FK relationships are drawn as one-to-many edges. The page includes pan, zoom, and fit controls plus a collapsible Mermaid source panel for copy-paste into any Mermaid editor.
+
 **Interactive mind maps:** right-click a schema for a D3.js force-directed graph of all tables and FK relationships, or right-click a specific table for a BFS wave-reveal animation that expands outward from that table. Both render as self-contained HTML in your system browser with pan, zoom, search, and tooltips.
 
 ## Table of Contents
@@ -56,18 +58,19 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 10. [Transaction Mode](#transaction-mode)
 11. [Schema Browser](#schema-browser)
 12. [QA Engine](#qa-engine)
-13. [Mind Map](#mind-map)
-14. [Support Script Manager](#support-script-manager)
-15. [Query History](#query-history)
-16. [Parameterised Queries](#parameterised-queries)
-17. [EXPLAIN / EXPLAIN ANALYZE](#explain--explain-analyze)
-18. [Exporting Results](#exporting-results)
-19. [Keyboard Shortcuts](#keyboard-shortcuts)
-20. [Themes](#themes)
-21. [Logging](#logging)
-22. [Security Notes](#security-notes)
-23. [Known Limitations](#known-limitations)
-24. [Changelog](#changelog)
+13. [ERD](#erd)
+14. [Mind Map](#mind-map)
+15. [Support Script Manager](#support-script-manager)
+16. [Query History](#query-history)
+17. [Parameterised Queries](#parameterised-queries)
+18. [EXPLAIN / EXPLAIN ANALYZE](#explain--explain-analyze)
+19. [Exporting Results](#exporting-results)
+20. [Keyboard Shortcuts](#keyboard-shortcuts)
+21. [Themes](#themes)
+22. [Logging](#logging)
+23. [Security Notes](#security-notes)
+24. [Known Limitations](#known-limitations)
+25. [Changelog](#changelog)
 
 ## Requirements
 
@@ -287,6 +290,14 @@ Right-click any schema in the Schema Browser and choose **🔍 QA Engine** to ru
 - **📄 Export CSV** — save the full findings table (schema, check, severity, table, column, message, fix SQL) to a file.
 
 **Auto-QA on connect:** enable **Run QA Engine on connect** in the Schema Browser ⚙ Settings panel to run the QA Engine automatically on the first schema whenever a new connection is established.
+
+## ERD
+
+**Generate ERD** — right-click any schema in the Schema Browser and choose **📐 Generate ERD**. Coruscant queries the database for column definitions, primary-key flags, and foreign-key relationships, then renders a [Mermaid](https://mermaid.js.org/) `erDiagram` and opens it as a self-contained HTML page in your default browser.
+
+Each table appears as an entity box listing every column name, its PostgreSQL data type, and a `PK` marker on primary-key columns. FK relationships are drawn as one-to-many edges (`||--o{`) between the parent and child tables.
+
+The page includes pan, zoom, and fit controls powered by svg-pan-zoom, and a collapsible **▶ Mermaid source** panel so you can copy the raw diagram definition into any Mermaid-compatible editor (e.g. mermaid.live). Use **File → Save Page As** in the browser to keep the diagram as a schema snapshot or share it with colleagues.
 
 ## Mind Map
 

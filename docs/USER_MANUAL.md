@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.0.4
+**Version:** 1.0.6
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -72,7 +72,13 @@
 19. [Support Script Manager](#19-support-script-manager)
 20. [Keyboard Shortcuts Reference](#20-keyboard-shortcuts-reference)
 21. [Troubleshooting](#21-troubleshooting)
-21. [Security Guidance](#21-security-guidance)
+22. [Recovery Mode](#22-recovery-mode)
+    - 22.1 [What Recovery Mode Means](#221-what-recovery-mode-means)
+    - 22.2 [Automatic Detection on Connect](#222-automatic-detection-on-connect)
+    - 22.3 [The Recovery Dialog](#223-the-recovery-dialog)
+    - 22.4 [Promoting to Primary — One Click](#224-promoting-to-primary--one-click)
+    - 22.5 [Safety Considerations](#225-safety-considerations)
+23. [Security Guidance](#23-security-guidance)
 
 ---
 
@@ -1086,7 +1092,190 @@ Coruscant itself does not modify passwords — characters like `$`, `@`, `%`, an
 
 ---
 
-## 21. Security Guidance
+## 22. Recovery Mode
+
+### 22.1 What Recovery Mode Means
+
+PostgreSQL enters **recovery mode** in two situations:
+
+- **Crash recovery** — after an unclean shutdown the server replays WAL (Write-Ahead Log) records to bring the data files back to a consistent state. The database is unavailable for writes until replay completes.
+- **Standby / hot standby** — a replica server continuously applies WAL received from a primary. The database is readable but not writable. `pg_is_in_recovery()` returns `true` in both cases.
+
+If your production application is pointing at a server in recovery mode, write operations will fail with errors like `cannot execute INSERT in a read-only transaction` or `recovery is in progress`. Coruscant gives you the information and the controls to resolve this directly from the UI.
+
+### 22.2 Automatic Detection on Connect
+
+Every time you successfully connect to a database, Coruscant silently runs `pg_is_in_recovery()` in the background. If the result is `true`:
+
+- The **status bar** immediately shows:
+  > ⚠  Database is in RECOVERY MODE — click 🔴 Recovery to investigate.
+- The **🔴 Recovery** toolbar button label changes to **🔴 Recovery ⚠** to draw your attention even if you are looking elsewhere in the interface.
+
+No manual queries or extra steps are needed. Detection happens within milliseconds of the connection being established.
+
+If the server is a normal primary (`pg_is_in_recovery()` = `false`), nothing changes — the toolbar button remains available but unobtrusive.
+
+### 22.3 The Recovery Dialog
+
+Click **🔴 Recovery** in the toolbar to open the Recovery Mode dialog. The dialog is available whenever you are connected, whether or not the server is in recovery mode.
+
+The status card inside the dialog shows:
+
+| Field | What it tells you |
+|---|---|
+| **In Recovery** | `YES — standby / recovery` (red) or `NO — primary` (green) |
+| **WAL Replay Paused** | Whether WAL replay has been paused with `pg_wal_replay_pause()` |
+| **Replication Delay** | How far behind this server is relative to the primary, measured in seconds since the last replayed transaction. Colour-coded: green (< 60 s), amber (< 5 min), red (≥ 5 min) |
+| **Last WAL Received** | Log Sequence Number (LSN) of the most recently received WAL segment |
+| **Last WAL Replayed** | LSN of the most recently applied WAL segment. If this lags behind "Last WAL Received", replay is behind receipt |
+| **Last Txn Replayed** | Timestamp of the last transaction applied from WAL |
+| **Server Started** | When the PostgreSQL postmaster process started |
+| **PG Version** | Full PostgreSQL version string |
+
+**Auto-refresh:** the status card updates automatically every 10 seconds while the dialog is open, so you can watch replication delay decrease as WAL catches up. Click **⟳ Refresh** for an immediate update at any time.
+
+**Colour-coded header:**
+
+- Red strip — server is in recovery mode. The **⚡ Promote to Primary** button is active.
+- Green strip — server is operating as a primary. The promote button is disabled and a confirmation message is shown.
+
+### 22.4 Promoting to Primary — One Click
+
+Promotion converts a standby server into a writable primary. Use this when:
+
+- The original primary has failed and you need to make the standby the new primary.
+- You are performing a planned switchover.
+- The server is in paused recovery mode and you want to finalise it.
+
+**Steps:**
+
+1. Open the Recovery dialog (**🔴 Recovery** button in the toolbar).
+2. Confirm that **In Recovery** shows `YES` and that the replication delay is acceptable.
+3. Click **⚡ Promote to Primary**.
+4. Read the confirmation prompt carefully. It reminds you that this action is irreversible.
+5. Click **Yes** to proceed.
+
+Coruscant runs the promotion call in a background thread (the UI stays responsive). When promotion succeeds:
+
+- A confirmation dialog appears with the result message.
+- The status card refreshes automatically and the header strip changes to green, confirming the server is now a primary.
+
+**What happens under the hood:**
+
+Coruscant tries `SELECT pg_promote()` first. This is available on PostgreSQL 12 and later and is the recommended approach. On older versions, `pg_promote()` is not defined and Coruscant automatically falls back to `SELECT pg_wal_replay_resume()`, which resumes WAL replay if paused and also triggers promotion on older standby configurations.
+
+### 22.5 Safety Considerations
+
+> **Promotion is irreversible.** Once a standby is promoted it cannot be automatically re-attached to the original primary. The original primary must be rebuilt as a new standby from the promoted server.
+
+Before clicking **⚡ Promote to Primary**, verify:
+
+- The original primary server is **offline or fenced** (e.g. shut down, removed from the load balancer, or network-isolated). If both servers are writable simultaneously ("split brain"), data on one will be lost when you reconcile.
+- Replication delay is acceptable. Any WAL not yet replayed when promotion occurs represents transactions that occurred on the primary *after* the last replayed LSN — those transactions will be lost.
+- Your PostgreSQL user has the required privilege. On PostgreSQL 14+, the role must have `pg_promote` granted, or be a superuser. On older versions, superuser access is required.
+
+If promotion fails, Coruscant shows the full error message from PostgreSQL. Common causes:
+
+| Error | Likely cause |
+|---|---|
+| `permission denied to promote server` | The current user lacks the `pg_promote` privilege or superuser status |
+| `server is not in standby mode` | The server is already a primary — no action needed |
+| `pg_promote(): server not in recovery` | Same as above |
+
+---
+
+## 23. Database Doctor
+
+The **Database Doctor** is a built-in diagnostic and repair panel that checks your PostgreSQL server for four of the most common operational problems and lets you fix them with a single click.
+
+### 23.1 Opening the Doctor
+
+Click the **🩺** button in the status bar footer (visible whenever a database connection is active). The dialog opens and waits for you to run a diagnosis.
+
+Click **🔄 Run Diagnosis** to execute all four checks simultaneously in a background thread. Results appear on colour-coded severity cards:
+
+| Colour | Severity | Meaning |
+|--------|----------|---------|
+| 🟢 Green border | OK | No problem detected |
+| 🟡 Amber border | Warning | Issue present — monitor or address soon |
+| 🔴 Red border | Critical | Immediate action recommended |
+
+### 23.2 Health Check — Lock Contention
+
+**What it detects:** queries that are blocked waiting for a lock held by another session, using `pg_blocking_pids()`.
+
+**Severity rules:**
+- **Warning** — one or more blocked queries detected.
+- **Critical** — any blocked query has been waiting more than 60 seconds.
+
+**Repair actions:**
+
+| Button | Action |
+|--------|--------|
+| **Kill Blocker** | Select a row in the lock table then click this button to call `pg_terminate_backend(pid)` on the blocking session. Requires confirmation. |
+
+> **Tip:** killing a blocker ends its transaction and rolls it back. All queries waiting on that lock are immediately unblocked.
+
+### 23.3 Health Check — Table Bloat
+
+**What it detects:** tables with significant numbers of dead tuples (rows left over from `UPDATE` and `DELETE` operations that `autovacuum` has not yet reclaimed). Data is read from `pg_stat_user_tables`.
+
+**Threshold for inclusion:** a table appears in the list if it has > 500 dead tuples or a dead-tuple ratio > 5 %.
+
+**Severity rules:**
+- **Warning** — one or more bloated tables detected.
+- **Critical** — the worst table has > 30 % dead tuples, or 10 or more tables are bloated.
+
+**Repair actions:**
+
+| Button | Action |
+|--------|--------|
+| **VACUUM Selected** | Select a table row then click to run `VACUUM ANALYZE` on that table. |
+| **VACUUM All** | Runs `VACUUM ANALYZE` on every table shown in the bloat list. |
+
+### 23.4 Health Check — Connection Exhaustion
+
+**What it detects:** how many backends are connected relative to `max_connections`, and how many are in the `idle in transaction` state (which hold locks and prevent autovacuum from running).
+
+**Severity rules:**
+- **Warning** — connections at 70 % of `max_connections`, or 2+ idle-in-transaction backends, or 1+ long-running queries (> 5 min).
+- **Critical** — connections at 85 % of `max_connections`, or 5+ idle-in-transaction backends.
+
+**Repair actions:**
+
+| Button | Action |
+|--------|--------|
+| **Terminate Idle** | Terminates all backends in the `idle` state. The current session is never touched. |
+| **Terminate Idle-in-Txn** | Terminates all `idle in transaction` backends — the most dangerous for connection exhaustion. |
+
+Both buttons require a confirmation prompt.
+
+### 23.5 Health Check — XID Wraparound
+
+**What it detects:** the age of each database's oldest unfrozen transaction ID (`datfrozenxid`) as a percentage of the 2-billion XID limit. Approaching this limit causes PostgreSQL to shut down to protect data integrity.
+
+**Severity rules:**
+- **Warning** — any database has consumed 40 % or more of the XID space.
+- **Critical** — any database has consumed 70 % or more of the XID space.
+
+**Repair action:**
+
+| Button | Action |
+|--------|--------|
+| **VACUUM FREEZE** | Runs `VACUUM FREEZE` on the currently connected database, resetting the XID age of all tables in it. |
+
+> **Important:** `VACUUM FREEZE` operates on the currently connected database only. If the most critical database in the list is a different database, close this dialog, reconnect to that database, then reopen Database Doctor.
+
+### 23.6 How Repairs Work
+
+- All repairs run in a background thread — the UI remains responsive.
+- Every destructive action (kill, terminate, VACUUM) shows a confirmation dialog before executing.
+- After each repair completes, the diagnosis re-runs automatically so the cards reflect the updated state immediately.
+- VACUUM operations temporarily switch the connection to autocommit mode (required by PostgreSQL) and restore the original setting afterward.
+
+---
+
+## 24. Security Guidance
 
 ### Passwords with Special Characters
 
@@ -1145,80 +1334,43 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 
 ---
 
+## What's New in 1.0.6
+
+**Version 1.0.6** adds the Database Doctor — a one-stop diagnostic and repair panel for the four most common PostgreSQL operational problems.
+
+### New: Database Doctor (🩺)
+
+Click the **🩺** button in the status bar footer (visible whenever connected) to open the Database Doctor dialog. Click **🔄 Run Diagnosis** to run four health checks simultaneously:
+
+- **Lock Contention** — detects blocked queries; lets you kill the blocking session with one click.
+- **Table Bloat** — finds tables with excessive dead tuples; provides VACUUM ANALYZE on individual tables or all bloated tables at once.
+- **Connection Exhaustion** — shows connection usage vs `max_connections`; lets you terminate idle and idle-in-transaction backends.
+- **XID Wraparound** — shows transaction ID age as a percentage of the 2-billion limit; lets you run VACUUM FREEZE on the connected database to reset it.
+
+Each check displays a colour-coded severity card (green / amber / red). All repairs require confirmation and run off the UI thread. The diagnosis re-runs automatically after each repair.
+
+See [§23 Database Doctor](#23-database-doctor) for the full reference.
+
+---
+
+## What's New in 1.0.5
+
+**Version 1.0.5** adds one-click database recovery mode detection and repair.
+
+### New: Recovery Mode Detection and Promotion
+
+Coruscant now automatically detects when a connected PostgreSQL server is in recovery or standby mode and provides a dedicated dialog to monitor and resolve it.
+
+**Automatic detection** — on every successful connection, Coruscant silently queries `pg_is_in_recovery()`. If the server is in recovery mode, the status bar immediately shows a warning and the **🔴 Recovery** toolbar button label changes to **🔴 Recovery ⚠**.
+
+**Recovery dialog** — click **🔴 Recovery** to open a live status panel showing WAL receive and replay positions, replication delay (colour-coded by severity), WAL replay paused state, server start time, and PostgreSQL version. The panel auto-refreshes every 10 seconds.
+
+**One-click promote** — click **⚡ Promote to Primary** to convert the standby to a primary server. After a confirmation prompt, Coruscant calls `pg_promote()` (PostgreSQL 12+) or falls back to `pg_wal_replay_resume()`, runs the call off the UI thread, and refreshes the dialog to confirm the result.
+
+See [§22 Recovery Mode](#22-recovery-mode) for the full reference.
+
+---
+
 ## What's New in 1.0.4
 
-**Version 1.0.4** adds automated schema health analysis and interactive schema visualisation.
-
-### New: QA Engine
-
-A full automated health check engine is now built into the Schema Browser. Right-click any schema and choose **🔍 QA Engine** to run six checks in a background thread and receive a colour-coded report with a 0–100 health score. Checks cover: orphaned tables, missing FK indexes (with generated fix SQL), circular FK cycles, nullable FKs, naming violations, and type inconsistencies.
-
-Findings can be suppressed per-table or check-wide (rules persist across sessions), used to jump-search the Script Manager (**🔎 Find Scripts**), or exported to CSV (**📄 Export CSV**). Enable **Run QA Engine on connect** in the Settings panel to run automatically on every new connection.
-
-See [§10 QA Engine](#10-qa-engine) for the full reference.
-
-### New: Mind Map
-
-Two new right-click options visualise your schema as an interactive D3.js graph rendered in your default browser.
-
-**🗺 Mind Map** (schema) — shows every table and FK relationship as a force-directed graph. Node size encodes row count; colour encodes FK degree. Supports pan, zoom, and a search box to highlight tables by name.
-
-**🗺 Mind Map from here** (table) — the same graph with a BFS wave-reveal animation starting from the selected table, revealing its neighbourhood outward in waves.
-
-Both maps are self-contained HTML files — no internet connection required and no server needed.
-
-See [§11 Mind Map](#11-mind-map) for the full reference.
-
----
-
-## What's New in 1.0.3
-
-**Version 1.0.3** hardens password handling for special characters and improves the connection dialog experience.
-
-### Why This Matters
-
-Modern security policies (PCI-DSS, HIPAA, SOC 2) require passwords to include special characters. Cloud databases and secret managers — AWS RDS, Azure Database, HashiCorp Vault — generate passwords that almost always include `$`, `@`, `%`, `&`, and similar characters. Coruscant passes these through correctly because it uses `psycopg2.connect()` keyword arguments — the password reaches PostgreSQL as a raw string with no URI construction, URL-encoding, or shell expansion step in between. Version 1.0.3 adds the remaining pieces to make the full experience reliable at the input layer.
-
-### New: Show/Hide Password Toggle
-
-A **👁** button now sits beside the Password field in the connection dialog. Click it to reveal the password in plain text so you can verify what you typed. Click again to hide it. This is especially useful when:
-
-- Pasting a long auto-generated password from a credential manager.
-- Typing on an unfamiliar keyboard layout.
-- Debugging an "authentication failed" error where the password looks correct but isn't.
-
-### Improved: IME and Autocorrect Protection
-
-The password field now explicitly disables predictive text, autocorrection, and automatic capitalisation at the platform level (`ImhHiddenText | ImhNoPredictiveText | ImhNoAutoUppercase | ImhSensitiveData`). On some platforms, input methods would silently alter what you typed — a capital letter added here, a special character swapped there — without any visible indication. This is now prevented.
-
----
-
-## What's New in 1.0.2
-
-**Version 1.0.2** focuses on the startup experience.
-
-### New Features
-
-- **Startup splash screen** — when you launch the packaged application (the downloaded `.exe` or Linux binary), a branded splash screen now appears immediately while the program loads. It is drawn by the bootloader *before* Python starts, so there is no longer a blank-desktop pause between double-clicking and the window appearing. The caption updates as startup progresses and the splash closes the moment the main window is ready. Running from source (`python main.py`) and the macOS app are unaffected.
-
-### Improvements
-
-- **Instant Script Manager** — the Support Script Manager's search index is now loaded quietly in the background while you work, instead of all at once the first time you open the dialog. Opening **📜 Scripts** — and the automatic suggestion popup that appears after a failed query — no longer briefly freezes the window while the index loads.
-
----
-
-## What's New in 1.0.1
-
-**Version 1.0.1** is a stability and reliability release with no new features. All changes are bug fixes and test coverage improvements.
-
-### Bug Fixes
-
-- **Query execution crash (regression from 1.0.0)** — `_on_results`, `_on_query_error`, `_on_query_cancelled`, and `_on_explain_results` were accidentally removed from `MainWindow`, causing a crash every time a query was executed. These handlers are now restored.
-- **Connection merge counter** — `merge_connections()` was incrementing the `updated` counter even when a connection had not actually changed. The counter now only increments on genuine updates.
-- **Script Ingester save path** — `ScriptIngester.ingest_zip()` always wrote the knowledge graph to the default location. An optional `save_path` parameter now lets callers specify an alternative path.
-- **Run-all concurrency** — `_on_run_all_tabs()` no longer starts a new run-all while a worker is already in flight; it cancels the previous worker first.
-- **Zombie-detection ping** — the lightweight connection health ping is now skipped if the connection was active within the last 30 seconds, reducing unnecessary round-trips on rapid successive queries.
-
-### Test Suite
-
-The automated test suite has grown from approximately 40 passing tests to **416 tests across 9 test files**, providing much broader regression coverage for core logic, UI parsing, and the script manager.
+**Version 1.0.4** adds automated sche

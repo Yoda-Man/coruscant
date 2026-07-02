@@ -36,6 +36,10 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Special characters in passwords work correctly always.** Coruscant calls `psycopg2.connect()` with keyword arguments (`host=`, `password=`, …) rather than constructing a URI or DSN string. The password is an opaque Python string from the moment you type it to the moment it reaches the PostgreSQL wire protocol no parsing, no escaping, no shell expansion. Modern DevOps pipelines and cloud credential managers (AWS RDS, Azure Database, HashiCorp Vault) generate passwords that almost always include special characters; Coruscant handles them correctly by design. A `👁` toggle in the connection dialog lets you reveal the password field to verify what you typed before connecting.
 
+**One-click recovery mode repair:** when Coruscant connects to a PostgreSQL server in standby or recovery mode it automatically detects this, warns you in the status bar, and activates the 🔴 Recovery toolbar button. Opening the dialog shows a live status panel (WAL receive/replay positions, replication delay, server start time, replay-paused flag) that refreshes every 10 seconds. A single **Promote to Primary** button calls `pg_promote()` (PostgreSQL 12+, falling back to `pg_wal_replay_resume()` on older versions) after a confirmation prompt, turning the standby into a primary without leaving the application.
+
+**Database Doctor (🩺):** a one-stop diagnostic and repair panel accessible from the status bar footer whenever connected. Four health checks run in the background — lock contention, table bloat, connection exhaustion, and XID wraparound — each displayed on a colour-coded severity card (green / amber / red). Every card comes with targeted repair buttons: kill the blocking query, VACUUM a bloated table, terminate idle connections, and run VACUUM FREEZE to reset transaction ID age. All repairs require confirmation and execute off the UI thread so the application stays responsive.
+
 **Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat", entirely offline, no LLM required.
 
 **Automated schema health checks (QA Engine):** right-click any schema to run six checks in a background thread orphaned tables, missing FK indexes (with generated `CREATE INDEX CONCURRENTLY` fix scripts), circular FK cycles, nullable FKs, snake_case naming violations, and type inconsistencies. Results appear in a colour-coded dialog with a 0–100 health score badge. Findings can be suppressed per-table or check-wide, exported to CSV, and used to jump-search the Script Manager.
@@ -68,9 +72,11 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 20. [Keyboard Shortcuts](#keyboard-shortcuts)
 21. [Themes](#themes)
 22. [Logging](#logging)
-23. [Security Notes](#security-notes)
-24. [Known Limitations](#known-limitations)
-25. [Changelog](#changelog)
+23. [Recovery Mode](#recovery-mode)
+24. [Database Doctor](#database-doctor)
+25. [Security Notes](#security-notes)
+26. [Known Limitations](#known-limitations)
+27. [Changelog](#changelog)
 
 ## Requirements
 
@@ -412,25 +418,58 @@ Enable verbose logging: `CORUSCANT_LOG_LEVEL=DEBUG python main.py`
 | `ERROR` | Connection failures, query errors, schema errors |
 | `DEBUG` | Full SQL (120 chars), per-statement row counts and elapsed time |
 
-## Security Notes
+## Recovery Mode
 
-- **Passwords with special characters are handled correctly.** The connection uses `psycopg2.connect()` keyword arguments — not a URI or DSN string — so characters like `$`, `@`, `%`, `&`, `/`, and spaces are passed to the PostgreSQL driver as-is. This matters for auto-generated passwords from cloud providers and secret managers, which routinely include these characters.
-- Passwords are base64-encoded in the OS settings store, not encrypted. Treat the store as sensitive.
-- Use `verify-full` SSL for production connections over untrusted networks.
-- The Script Manager never executes uploaded scripts during indexing; analysis is text-only.
-- No telemetry, no analytics, no external network calls from any part of the application.
+PostgreSQL servers running as standbys, or servers that crashed and are replaying WAL, enter **recovery mode** — a read-only state where `pg_is_in_recovery()` returns `true`. Without intervention the database remains unavailable for writes until the recovery process completes or an administrator promotes the standby.
 
-## Known Limitations
+Coruscant detects this automatically and provides a one-click path to resolution.
 
-| Area | Detail |
+### Automatic detection on connect
+
+Every time you connect, Coruscant silently calls `pg_is_in_recovery()`. If the server is in recovery mode:
+
+- The status bar shows: `⚠  Database is in RECOVERY MODE — click 🔴 Recovery to investigate.`
+- The toolbar button label changes to **🔴 Recovery ⚠**
+
+No manual queries required. The alert appears within milliseconds of a successful connection.
+
+### The Recovery dialog
+
+Click **🔴 Recovery** in the toolbar (always available when connected) to open the Recovery Mode dialog. It shows:
+
+| Field | What it tells you |
 |---|---|
-| Dollar-quoted strings | Highlighter handles `$$…$$` on a single line only |
-| Single connection | All editor tabs share one PostgreSQL connection |
-| No `.pgpass` support | Connection parameters must be entered manually |
-| Script Manager graph | Built with NetworkX; requires `pip install networkx>=2.6` |
+| **In Recovery** | `YES — standby / recovery` or `NO — primary` |
+| **WAL Replay Paused** | Whether WAL replay has been explicitly paused |
+| **Replication Delay** | Time since the last replayed transaction — green < 60 s, amber < 5 min, red > 5 min |
+| **Last WAL Received** | LSN of the most recently received WAL segment |
+| **Last WAL Replayed** | LSN of the most recently applied WAL segment |
+| **Last Txn Replayed** | Timestamp of the last replayed transaction |
+| **Server Started** | When the PostgreSQL process started |
+| **PG Version** | PostgreSQL version string |
 
-> **Not a limitation:** passwords containing `$`, `@`, `%`, or any other special character. Coruscant handles these correctly by design.
+The dialog auto-refreshes every 10 seconds. Click **⟳ Refresh** at any time for an immediate update.
 
-## Changelog
+### Promoting to primary — one click
 
-See [change.md](change.md) for the full version history.
+1. Confirm the original primary server is offline or fenced.
+2. Click **⚡ Promote to Primary** in the Recovery dialog.
+3. Confirm the prompt.
+
+Coruscant calls `pg_promote()` (PostgreSQL 12+) or falls back to `pg_wal_replay_resume()` on older versions, running the call off the UI thread so the application never freezes. The dialog refreshes automatically after promotion to confirm the server is now a primary.
+
+> **Privilege required:** the PostgreSQL user must have the `pg_promote` role (PG 14+) or be a superuser.
+
+## Database Doctor
+
+The **Database Doctor** (🩺) lives in the status bar footer and is visible whenever a database connection is active. Clicking it opens a diagnostic dialog that runs four health checks in parallel and displays results on colour-coded severity cards.
+
+### Opening the Doctor
+
+Click the **🩺** icon at the bottom-right of the main window, then click **🔄 Run Diagnosis** to start the checks. Each card updates immediately; click again at any time to refresh.
+
+### Health Checks
+
+| Check | What it detects | Severity triggers |
+|---|---|---|
+| **Lock Contention** | Queries blocked by other sessions (`pg_blocking_pids`) | Warning if any lock exists; Critical if longest wait 

@@ -168,6 +168,9 @@ class MainWindow(QMainWindow):
         self._act_commit   = action("Commit",   "COMMIT the current transaction")
         self._act_rollback = action("Rollback", "ROLLBACK the current transaction")
 
+        # Recovery
+        self._act_recovery = action("🔴 Recovery",  "Check / resolve database recovery mode")
+
         # Theme
         self._act_theme   = action("🌙",           "Toggle light / dark theme")
 
@@ -186,6 +189,7 @@ class MainWindow(QMainWindow):
         self._act_autocommit.toggled.connect(self._on_autocommit_toggled)
         self._act_commit.triggered.connect(self._on_commit)
         self._act_rollback.triggered.connect(self._on_rollback)
+        self._act_recovery.triggered.connect(self._on_recovery)
         self._act_theme.triggered.connect(self._on_toggle_theme)
 
         # Layout
@@ -206,6 +210,8 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         for a in (self._act_autocommit, self._act_commit, self._act_rollback):
             tb.addAction(a)
+        tb.addSeparator()
+        tb.addAction(self._act_recovery)
         tb.addSeparator()
 
         tb.addWidget(QLabel("  Row limit: ", styleSheet="font-size: 11px;"))
@@ -259,6 +265,7 @@ class MainWindow(QMainWindow):
             (self._act_autocommit, "#1A3A4C", "#1E4D66", "#0F2233", False),
             (self._act_commit,     "#1B5E20", "#2E7D32", "#145214", False),
             (self._act_rollback,   "#B71C1C", "#C62828", "#7F0000", False),
+            (self._act_recovery,   "#7B1FA2", "#8E24AA", "#4A0072", False),
             (self._act_theme,      "#212121", "#2D2D2D", "#0A0A0A", False),
         ]
 
@@ -277,6 +284,20 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(container)
         layout.setContentsMargins(4, 0, 8, 0)
         layout.setSpacing(2)
+
+        self._sb_doctor_btn = QPushButton("🩺")
+        self._sb_doctor_btn.setFlat(True)
+        self._sb_doctor_btn.setFixedSize(28, 22)
+        self._sb_doctor_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sb_doctor_btn.setToolTip("Database Doctor — diagnose and repair common issues")
+        self._sb_doctor_btn.setStyleSheet("""
+            QPushButton { font-size: 14px; border: none; background: transparent;
+                          padding: 0; margin-right: 4px; }
+            QPushButton:hover { background: #1e1e2e; border-radius: 4px; }
+        """)
+        self._sb_doctor_btn.clicked.connect(self._on_database_doctor)
+        self._sb_doctor_btn.hide()
+        layout.addWidget(self._sb_doctor_btn)
 
         self._sb_conn_btn = QPushButton("● Not connected")
         self._sb_conn_btn.setFlat(True)
@@ -600,7 +621,10 @@ class MainWindow(QMainWindow):
         self._act_autocommit.setEnabled(can_act and not busy)
         self._act_commit.setEnabled(connected and not busy and not autocommit)
         self._act_rollback.setEnabled(connected and not busy and not autocommit)
+        self._act_recovery.setEnabled(connected and not busy)
         self._schema_browser._refresh_btn.setEnabled(can_act and not busy)
+
+        self._sb_doctor_btn.setVisible(connected)
 
         if connected:
             name = self._current_connection_name or "Connected"
@@ -634,6 +658,7 @@ class MainWindow(QMainWindow):
                 f"{params['host']}:{params['port']}"
             )
             self._schema_browser.set_connected(True)
+            self._check_recovery_on_connect()
         except Exception as exc:
             log.error("Connection rejected by UI: %s", exc)
             self._current_connection_name = ""
@@ -750,6 +775,40 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             StyledMessageBox.critical(self, "Rollback Error", str(exc))
         self._update_ui_state()
+
+    def _check_recovery_on_connect(self) -> None:
+        """
+        Silently check pg_is_in_recovery() after a successful connect.
+        If the server is a standby, show an amber warning in the status bar
+        and update the toolbar button label to draw attention.
+        """
+        try:
+            status = self._db.check_recovery_status()
+        except Exception:
+            return   # Non-fatal — don't block the connect flow
+
+        if status.get("is_in_recovery"):
+            log.warning("Connected to a PostgreSQL server in recovery/standby mode")
+            self.statusBar().showMessage(
+                "⚠  Database is in RECOVERY MODE — click 🔴 Recovery to investigate."
+            )
+            self._act_recovery.setText("🔴 Recovery ⚠")
+        else:
+            self._act_recovery.setText("🔴 Recovery")
+
+    def _on_database_doctor(self) -> None:
+        """Open the Database Doctor dashboard from the status bar 🩺 button."""
+        from coruscant.ui.dialogs.doctor import DatabaseDoctorDialog
+        dlg = DatabaseDoctorDialog(self._db, parent=self)
+        dlg.exec()
+
+    def _on_recovery(self) -> None:
+        """Open the Recovery Mode dialog."""
+        from coruscant.ui.dialogs.recovery import RecoveryDialog
+        dlg = RecoveryDialog(self._db, parent=self)
+        dlg.exec()
+        # Reset button label after the dialog closes (server may now be primary)
+        self._act_recovery.setText("🔴 Recovery")
 
     def _on_results(self, results: list) -> None:
         self._clear_unpinned_result_tabs()

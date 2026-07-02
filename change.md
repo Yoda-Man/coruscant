@@ -1,5 +1,13 @@
 # Changelog
 
+### 1.0.6
+- **New — Database Doctor (🩺)** — click the 🩺 icon in the status bar footer to open a diagnostic and repair panel. Four health checks run in parallel background threads: lock contention (`pg_blocking_pids`), table bloat (`pg_stat_user_tables` dead-tuple ratio), connection exhaustion (usage vs `max_connections`, idle-in-transaction count), and XID wraparound (transaction ID age as % of 2-billion limit). Each check renders as a colour-coded severity card (green / amber / red).
+- **New — One-click repairs in Database Doctor** — every card exposes targeted repair buttons with confirmation prompts: Kill Blocker (`pg_terminate_backend`), VACUUM Selected table, VACUUM All bloated tables, Terminate Idle backends, Terminate Idle-in-Txn backends, and VACUUM FREEZE for wraparound. All repairs run off the UI thread and trigger an automatic re-diagnosis on completion.
+- **New — Recovery Mode detection** — on every successful connection Coruscant silently queries `pg_is_in_recovery()`. If the server is a standby, the status bar shows a warning and the 🔴 Recovery toolbar button activates.
+- **New — Recovery Mode dialog** — live status panel showing WAL receive/replay LSN positions, replication delay (colour-coded), replay-paused flag, server start time, and PostgreSQL version. Auto-refreshes every 10 seconds.
+- **New — One-click promote to primary** — the Recovery dialog's ⚡ Promote to Primary button calls `pg_promote()` (PostgreSQL 12+) with automatic fallback to `pg_wal_replay_resume()` on older versions, runs off the UI thread, and refreshes the dialog to confirm promotion.
+- **Version bump** — updated to 1.0.6 across all files.
+
 ### 1.0.4
 - **New — QA Engine** — right-click any schema in the Schema Browser and choose **🔍 QA Engine** to run a full automated health check. Six checks fire in a background thread: orphaned tables (no FK relationships), FK columns missing a covering index (with a `CREATE INDEX CONCURRENTLY` fix script), circular FK dependency cycles, nullable FK columns, snake_case naming violations, and column type inconsistencies across tables. Results appear in a colour-coded dialog with a 0–100 health score badge (green ≥ 80, amber ≥ 50, red below 50).
 - **New — QA: Suppress findings** — select any finding and click **🔕 Suppress** to hide it from all future QA runs on that table. Rules are persisted in QSettings (`qa/suppressed_findings`) as `check:table` or `check:*` (check-wide) keys. Manage or clear all rules via **🔕 Manage Suppressions**.
@@ -110,25 +118,4 @@
 ### 0.9.1
 - **Structured logging** — rotating log file written on every run (`logging_config.py`).
   Level controlled by `CORUSCANT_LOG_LEVEL` env var; default `INFO`, set `DEBUG` for full SQL traces.
-- **Crash handler** — `sys.excepthook` logs unhandled exceptions with full tracebacks and shows a user-facing dialog with the log file path.
-- **Qt message routing** — Qt's internal warnings and errors are now captured via `qInstallMessageHandler` and written to the log under the `Qt` logger.
-- **Startup environment snapshot** — each session logs Python, PySide6, Qt, and OS version at `INFO`.
-- **Window geometry persistence** — window size, position, dock layout, and both splitter positions are saved to QSettings on close and restored on next launch.
-- **Graceful shutdown** — `closeEvent` logs the shutdown, saves geometry, and disconnects cleanly from the database.
-- **Schema browser context menu** — right-click any table to generate a ready-to-edit SELECT, UPDATE, or DELETE script populated with the table's actual column names.
-- **Dark mode arrow fix** — QSpinBox and QComboBox up/down/drop-down arrows are now visible in dark mode using CSS triangle rendering.
-
-### 0.9.0  *(initial public release)*
-- Renamed from DBClient → **Coruscant**
-- Clean layered architecture: `core/`, `ui/`, `utils/` packages
-- Cancel query (⏹ / Escape) works during both Execute and EXPLAIN
-- Cancelled queries show a status bar message with no error dialog
-- Transaction mode: Auto-commit toggle + Commit / Rollback
-- SSL mode selector in connection dialog
-- Passwords base64-encoded in QSettings (no more plaintext)
-- Expanded schema browser: indexes, foreign keys, functions/procedures
-- Result filter uses `setRowHidden` (O(n), no widget reconstruction)
-- Errors shown as inline **ErrorResult** tabs with no blocking modals
-- Dropped connections detected after query errors
-- Keyboard shortcuts: Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab
-- Author: Marwa Trust Mutemasango
+- **Crash handler** — `sys.excepthook` logs unhandled exceptions with full tracebacks and shows 

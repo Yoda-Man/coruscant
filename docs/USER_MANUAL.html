@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Coruscant v1.0.4 &mdash; User Manual</title>
+<title>Coruscant v1.0.6 &mdash; User Manual</title>
 <style>
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -110,7 +110,7 @@
 <nav id="sidebar">
   <div id="sidebar-header">
     <div class="app-name">Coruscant</div>
-    <div class="app-sub">User Manual &middot; v1.0.4</div>
+    <div class="app-sub">User Manual &middot; v1.0.6</div>
   </div>
   <div id="toc">
     <a href="#coruscant-user-manual">Coruscant User Manual</a>
@@ -148,7 +148,21 @@
     <a href="#18-support-script-manager" class="toc-sub">18. Support Script Manager</a>
     <a href="#19-keyboard-shortcuts-reference" class="toc-sub">19. Keyboard Shortcuts Reference</a>
     <a href="#20-troubleshooting" class="toc-sub">20. Troubleshooting</a>
-    <a href="#21-security-guidance" class="toc-sub">21. Security Guidance</a>
+    <a href="#22-recovery-mode" class="toc-sub">22. Recovery Mode</a>
+    <a href="#221-what-recovery-mode-means" class="toc-sub" style="padding-left:40px">22.1 What Recovery Mode Means</a>
+    <a href="#222-automatic-detection-on-connect" class="toc-sub" style="padding-left:40px">22.2 Automatic Detection</a>
+    <a href="#223-the-recovery-dialog" class="toc-sub" style="padding-left:40px">22.3 The Recovery Dialog</a>
+    <a href="#224-promoting-to-primary" class="toc-sub" style="padding-left:40px">22.4 Promoting to Primary</a>
+    <a href="#225-safety-considerations" class="toc-sub" style="padding-left:40px">22.5 Safety Considerations</a>
+    <a href="#23-database-doctor" class="toc-sub">23. Database Doctor</a>
+    <a href="#231-opening-the-doctor" class="toc-sub" style="padding-left:40px">23.1 Opening the Doctor</a>
+    <a href="#232-lock-contention" class="toc-sub" style="padding-left:40px">23.2 Lock Contention</a>
+    <a href="#233-table-bloat" class="toc-sub" style="padding-left:40px">23.3 Table Bloat</a>
+    <a href="#234-connection-exhaustion" class="toc-sub" style="padding-left:40px">23.4 Connection Exhaustion</a>
+    <a href="#235-xid-wraparound" class="toc-sub" style="padding-left:40px">23.5 XID Wraparound</a>
+    <a href="#24-security-guidance" class="toc-sub">24. Security Guidance</a>
+    <a href="#whats-new-106" class="toc-sub">What's New in 1.0.6</a>
+    <a href="#whats-new-105" class="toc-sub">What's New in 1.0.5</a>
     <a href="#whats-new-104" class="toc-sub">What's New in 1.0.4</a>
     <a href="#whats-new-103" class="toc-sub">What's New in 1.0.3</a>
   </div>
@@ -156,7 +170,7 @@
 <main id="content">
   <div id="hero">
     <img src="coruscant.png" alt="Coruscant">
-    <div class="meta"><div class="version-badge">v1.0.4</div><br>
+    <div class="meta"><div class="version-badge">v1.0.6</div><br>
     PostgreSQL Multi-Query Tool &nbsp;&middot;&nbsp; User Manual</div>
   </div>
 <h1 id="coruscant-user-manual" class="section-anchor">Coruscant User Manual</h1>
@@ -236,7 +250,9 @@
 <li><a href="#18-support-script-manager">Support Script Manager</a></li>
 <li><a href="#19-keyboard-shortcuts-reference">Keyboard Shortcuts Reference</a></li>
 <li><a href="#20-troubleshooting">Troubleshooting</a></li>
-<li><a href="#21-security-guidance">Security Guidance</a></li>
+<li><a href="#22-recovery-mode">Recovery Mode</a></li>
+<li><a href="#23-database-doctor">Database Doctor</a></li>
+<li><a href="#24-security-guidance">Security Guidance</a></li>
 </ol>
 <hr />
 <h2 id="1-introduction" class="section-anchor">1. Introduction</h2>
@@ -1340,7 +1356,130 @@ for the file location and how to filter it.</p>
 </ol>
 <p>Coruscant itself does not modify passwords &mdash; characters like <code>$</code>, <code>@</code>, <code>%</code>, and spaces are passed verbatim to PostgreSQL.</p>
 <hr />
-<h2 id="21-security-guidance" class="section-anchor">21. Security Guidance</h2>
+<h2 id="22-recovery-mode" class="section-anchor">22. Recovery Mode</h2>
+
+<h3 id="221-what-recovery-mode-means">22.1 What Recovery Mode Means</h3>
+<p>PostgreSQL enters <strong>recovery mode</strong> in two situations:</p>
+<ul>
+  <li><strong>Crash recovery</strong> — after an unclean shutdown the server replays WAL (Write-Ahead Log) records to return the data files to a consistent state. The database is unavailable for writes until replay completes.</li>
+  <li><strong>Standby / hot standby</strong> — a replica server continuously applies WAL received from a primary. The database is readable but not writable.</li>
+</ul>
+<p>In both cases <code>pg_is_in_recovery()</code> returns <code>true</code>. Write operations from your application will fail with errors such as <em>"cannot execute INSERT in a read-only transaction"</em> or <em>"recovery is in progress"</em>. Coruscant detects this automatically and gives you the information and controls to resolve it without leaving the application.</p>
+
+<h3 id="222-automatic-detection-on-connect">22.2 Automatic Detection on Connect</h3>
+<p>Every time you successfully connect to a database, Coruscant silently queries <code>pg_is_in_recovery()</code> in the background. If the result is <code>true</code>:</p>
+<ul>
+  <li>The <strong>status bar</strong> immediately shows: <em>⚠  Database is in RECOVERY MODE — click 🔴 Recovery to investigate.</em></li>
+  <li>The <strong>🔴 Recovery</strong> toolbar button label changes to <strong>🔴 Recovery ⚠</strong>.</li>
+</ul>
+<p>No manual queries or extra steps are needed. Detection happens within milliseconds of the connection being established. If the server is a normal primary, nothing changes — the toolbar button remains available but unobtrusive.</p>
+
+<h3 id="223-the-recovery-dialog">22.3 The Recovery Dialog</h3>
+<p>Click <strong>🔴 Recovery</strong> in the toolbar to open the Recovery Mode dialog. It is available whenever you are connected, regardless of whether the server is in recovery mode.</p>
+<p>The status card shows:</p>
+<table>
+<thead><tr><th>Field</th><th>What it tells you</th></tr></thead>
+<tbody>
+<tr><td><strong>In Recovery</strong></td><td><span style="color:#f38ba8;font-weight:700">YES — standby / recovery</span> or <span style="color:#a6e3a1;font-weight:700">NO — primary</span></td></tr>
+<tr><td><strong>WAL Replay Paused</strong></td><td>Whether WAL replay has been paused with <code>pg_wal_replay_pause()</code></td></tr>
+<tr><td><strong>Replication Delay</strong></td><td>Time since the last replayed transaction. <span style="color:#a6e3a1">Green</span> &lt; 60 s, <span style="color:#fab387">amber</span> &lt; 5 min, <span style="color:#f38ba8">red</span> ≥ 5 min</td></tr>
+<tr><td><strong>Last WAL Received</strong></td><td>LSN of the most recently received WAL segment</td></tr>
+<tr><td><strong>Last WAL Replayed</strong></td><td>LSN of the most recently applied WAL segment. A gap between received and replayed means replay is behind</td></tr>
+<tr><td><strong>Last Txn Replayed</strong></td><td>Timestamp of the last transaction applied from WAL</td></tr>
+<tr><td><strong>Server Started</strong></td><td>When the PostgreSQL postmaster process started</td></tr>
+<tr><td><strong>PG Version</strong></td><td>Full PostgreSQL version string</td></tr>
+</tbody>
+</table>
+<p><strong>Auto-refresh:</strong> the status card updates automatically every 10 seconds. Click <strong>⟳ Refresh</strong> for an immediate update. The header strip is <span style="color:#f38ba8">red</span> when in recovery and <span style="color:#a6e3a1">green</span> when operating as a primary.</p>
+
+<h3 id="224-promoting-to-primary">22.4 Promoting to Primary — One Click</h3>
+<p>Promotion converts a standby server into a writable primary. Use this when the original primary has failed, you are performing a planned switchover, or the server is in paused recovery mode and you want to finalise it.</p>
+<ol>
+  <li>Open the Recovery dialog by clicking <strong>🔴 Recovery</strong> in the toolbar.</li>
+  <li>Confirm that <strong>In Recovery</strong> shows <code>YES</code> and that the replication delay is acceptable.</li>
+  <li>Click <strong>⚡ Promote to Primary</strong>.</li>
+  <li>Read the confirmation prompt carefully — promotion is irreversible.</li>
+  <li>Click <strong>Yes</strong> to proceed.</li>
+</ol>
+<p>Coruscant runs the promotion call in a background thread (the UI stays responsive). On success a confirmation dialog appears, and the status card refreshes automatically to confirm the server is now a primary.</p>
+<blockquote><p><strong>Under the hood:</strong> Coruscant calls <code>SELECT pg_promote()</code> first (PostgreSQL 12+). On older versions where <code>pg_promote()</code> is not available it automatically falls back to <code>SELECT pg_wal_replay_resume()</code>.</p></blockquote>
+
+<h3 id="225-safety-considerations">22.5 Safety Considerations</h3>
+<blockquote><p><strong>Promotion is irreversible.</strong> Once a standby is promoted it cannot be automatically re-attached to the original primary. The original primary must be rebuilt as a new standby from the promoted server.</p></blockquote>
+<p>Before clicking <strong>⚡ Promote to Primary</strong>, verify:</p>
+<ul>
+  <li>The original primary server is <strong>offline or fenced</strong> (shut down, removed from the load balancer, or network-isolated). If both servers become writable simultaneously ("split brain"), data on one will be lost.</li>
+  <li><strong>Replication delay is acceptable.</strong> Any WAL not yet replayed when promotion occurs represents transactions that will be lost.</li>
+  <li>Your PostgreSQL user has the required privilege. On PostgreSQL 14+, the role must have <code>pg_promote</code> granted or be a superuser. On older versions, superuser access is required.</li>
+</ul>
+<p>Common promotion errors:</p>
+<table>
+<thead><tr><th>Error message</th><th>Likely cause</th></tr></thead>
+<tbody>
+<tr><td><code>permission denied to promote server</code></td><td>The current user lacks the <code>pg_promote</code> privilege or superuser status</td></tr>
+<tr><td><code>server is not in standby mode</code></td><td>The server is already a primary — no action needed</td></tr>
+</tbody>
+</table>
+<hr />
+<h2 id="23-database-doctor" class="section-anchor">23. Database Doctor</h2>
+<p>The <strong>Database Doctor</strong> (🩺) is a built-in diagnostic and repair panel that checks your PostgreSQL server for four common operational problems and lets you fix them with a single confirmed click.</p>
+
+<h3 id="231-opening-the-doctor">23.1 Opening the Doctor</h3>
+<p>Click the <strong>🩺</strong> button in the status bar footer — visible whenever a database connection is active. The dialog opens showing four empty cards. Click <strong>🔄 Run Diagnosis</strong> to run all checks simultaneously in a background thread.</p>
+<p>Each card shows a coloured left strip and badge indicating severity:</p>
+<table>
+<thead><tr><th>Colour</th><th>Severity</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>🟢 Green</td><td>OK</td><td>No problem detected</td></tr>
+<tr><td>🟡 Amber</td><td>Warning</td><td>Issue present — monitor or address soon</td></tr>
+<tr><td>🔴 Red</td><td>Critical</td><td>Immediate action recommended</td></tr>
+</tbody>
+</table>
+
+<h3 id="232-lock-contention">23.2 Health Check — Lock Contention</h3>
+<p><strong>What it detects:</strong> queries blocked waiting for a lock held by another session, using <code>pg_blocking_pids()</code>. The table shows the blocked PID, user, query, wait time, and the blocking PID, user, and query.</p>
+<p><strong>Severity:</strong> Warning if any blocked query exists; Critical if any blocked query has waited more than 60 seconds.</p>
+<table>
+<thead><tr><th>Button</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><strong>Kill Blocker</strong></td><td>Select the blocking row, then click to call <code>pg_terminate_backend(pid)</code>. Requires confirmation. Killing the blocker rolls back its transaction and immediately unblocks all waiting queries.</td></tr>
+</tbody>
+</table>
+
+<h3 id="233-table-bloat">23.3 Health Check — Table Bloat</h3>
+<p><strong>What it detects:</strong> tables with significant dead tuples from <code>UPDATE</code> and <code>DELETE</code> operations that <code>autovacuum</code> has not yet reclaimed, read from <code>pg_stat_user_tables</code>. A table appears if it has &gt; 500 dead tuples or a dead-tuple ratio &gt; 5&nbsp;%.</p>
+<p><strong>Severity:</strong> Warning if any bloated table exists; Critical if the worst table exceeds 30&nbsp;% dead tuples or 10+ tables are affected.</p>
+<table>
+<thead><tr><th>Button</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><strong>VACUUM Selected</strong></td><td>Select a table row, then click to run <code>VACUUM ANALYZE</code> on that table.</td></tr>
+<tr><td><strong>VACUUM All</strong></td><td>Runs <code>VACUUM ANALYZE</code> on every table shown in the bloat list.</td></tr>
+</tbody>
+</table>
+
+<h3 id="234-connection-exhaustion">23.4 Health Check — Connection Exhaustion</h3>
+<p><strong>What it detects:</strong> how many backends are connected relative to <code>max_connections</code>, and how many are in the <code>idle in transaction</code> state (holding locks, blocking autovacuum).</p>
+<p><strong>Severity:</strong> Warning at 70&nbsp;% usage or 2+ idle-in-transaction backends; Critical at 85&nbsp;% or 5+ idle-in-transaction backends.</p>
+<table>
+<thead><tr><th>Button</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><strong>Terminate Idle</strong></td><td>Terminates all <code>idle</code> backends (excluding the current session). Requires confirmation.</td></tr>
+<tr><td><strong>Terminate Idle-in-Txn</strong></td><td>Terminates all <code>idle in transaction</code> backends — the most dangerous for connection exhaustion. Requires confirmation.</td></tr>
+</tbody>
+</table>
+
+<h3 id="235-xid-wraparound">23.5 Health Check — XID Wraparound</h3>
+<p><strong>What it detects:</strong> the age of each database's oldest unfrozen transaction ID (<code>datfrozenxid</code>) as a percentage of the 2-billion XID limit. PostgreSQL shuts down automatically when this limit is reached to protect data integrity.</p>
+<p><strong>Severity:</strong> Warning at 40&nbsp;%; Critical at 70&nbsp;%.</p>
+<table>
+<thead><tr><th>Button</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><strong>VACUUM FREEZE</strong></td><td>Runs <code>VACUUM FREEZE</code> on the currently connected database, resetting XID age for all tables in it. Requires confirmation.</td></tr>
+</tbody>
+</table>
+<p><strong>Important:</strong> <code>VACUUM FREEZE</code> operates on the currently connected database only. If the most critical database in the list is a different database, reconnect to it first, then reopen Database Doctor.</p>
+<hr />
+<h2 id="24-security-guidance" class="section-anchor">24. Security Guidance</h2>
 <h3 id="passwords-with-special-characters">Passwords with Special Characters</h3>
 <p>Coruscant is designed to accept any password your security policy or credential manager produces &mdash; including those with <code>$</code>, <code>@</code>, <code>%</code>, <code>&amp;</code>, <code>/</code>, spaces, and Unicode characters. This is not a minor feature; it is a correctness requirement for any tool used in professional environments.</p>
 <p><strong>How it works:</strong> when Coruscant connects to PostgreSQL, it calls the psycopg2 library using named keyword arguments:</p>
@@ -1400,33 +1539,4 @@ for the file location and how to filter it.</p>
 <hr />
 <p><em>Author: Marwa Trust Mutemasango</em></p>
 <hr />
-<h2 id="whats-new-104" class="section-anchor">What&#8217;s New in 1.0.4</h2>
-<p><strong>Version 1.0.4</strong> adds automated schema health analysis and interactive schema visualisation.</p>
-<h3 id="new-qa-engine">New: QA Engine</h3>
-<p>A full automated health check engine is now built into the Schema Browser. Right-click any schema and choose <strong>&#x1F50D; QA Engine</strong> to run six checks in a background thread and receive a colour-coded report with a 0&ndash;100 health score. Checks cover: orphaned tables, missing FK indexes (with generated fix SQL), circular FK cycles, nullable FKs, naming violations, and type inconsistencies.</p>
-<p>Findings can be suppressed per-table or check-wide (rules persist across sessions), used to jump-search the Script Manager (<strong>&#x1F50E; Find Scripts</strong>), or exported to CSV (<strong>&#x1F4C4; Export CSV</strong>). Enable <strong>Run QA Engine on connect</strong> in the Settings panel to run automatically on every new connection.</p>
-<p>See <a href="#10-qa-engine">§10 QA Engine</a> for the full reference.</p>
-<h3 id="new-mind-map">New: Mind Map</h3>
-<p>Two new right-click options visualise your schema as an interactive D3.js graph rendered in your default browser.</p>
-<p><strong>&#x1F5FA; Mind Map</strong> (schema) &mdash; shows every table and FK relationship as a force-directed graph. Node size encodes row count; colour encodes FK degree. Supports pan, zoom, and a search box.</p>
-<p><strong>&#x1F5FA; Mind Map from here</strong> (table) &mdash; the same graph with a BFS wave-reveal animation starting from the selected table, revealing its neighbourhood outward in waves.</p>
-<p>Both maps are self-contained HTML files &mdash; no internet connection required.</p>
-<p>See <a href="#11-mind-map">§11 Mind Map</a> for the full reference.</p>
-<hr />
-<h2 id="whats-new-103" class="section-anchor">What&#8217;s New in 1.0.3</h2>
-<p><strong>Version 1.0.3</strong> hardens password handling for special characters and improves the connection dialog experience.</p>
-<h3 id="why-this-matters">Why This Matters</h3>
-<p>Modern security policies (PCI-DSS, HIPAA, SOC&nbsp;2) require passwords to include special characters. Cloud databases and secret managers &mdash; AWS RDS, Azure Database, HashiCorp Vault &mdash; generate passwords that almost always include <code>$</code>, <code>@</code>, <code>%</code>, <code>&amp;</code>, and similar characters. Coruscant passes these through correctly because it uses <code>psycopg2.connect()</code> keyword arguments &mdash; the password reaches PostgreSQL as a raw string with no URI construction, URL-encoding, or shell expansion step in between. Version 1.0.3 adds the remaining pieces to make the full experience reliable at the input layer.</p>
-<h3 id="new-show-hide-toggle">New: Show/Hide Password Toggle</h3>
-<p>A <strong>&#128065;</strong> button now sits beside the Password field in the connection dialog. Click it to reveal the password in plain text so you can verify what you typed. Click again to hide it. This is especially useful when:</p>
-<ul>
-<li>Pasting a long auto-generated password from a credential manager.</li>
-<li>Typing on an unfamiliar keyboard layout.</li>
-<li>Debugging an &ldquo;authentication failed&rdquo; error where the password looks correct but isn&rsquo;t.</li>
-</ul>
-<h3 id="improved-ime-protection">Improved: IME and Autocorrect Protection</h3>
-<p>The password field now explicitly disables predictive text, autocorrection, and automatic capitalisation at the platform level (<code>ImhHiddenText | ImhNoPredictiveText | ImhNoAutoUppercase | ImhSensitiveData</code>). On some platforms, input methods would silently alter what you typed &mdash; a capital letter added here, a special character swapped there &mdash; without any visible indication. This is now prevented.</p>
-  <div id="footer">Coruscant v1.0.4 &nbsp;&middot;&nbsp; Author: Marwa Trust Mutemasango &nbsp;&middot;&nbsp; Open-source, MIT licence</div>
-</main>
-</body>
-</html>
+<h2 id="whats-new-106" class="section-anchor">What&#8217;s New in 1

@@ -341,6 +341,188 @@ class DatabaseManager:
         return results
 
     # ------------------------------------------------------------------ #
+    #  Database Doctor repairs                                             #
+    # ------------------------------------------------------------------ #
+
+    def kill_connection(self, pid: int) -> bool:
+        """
+        Terminate a backend by PID via pg_terminate_backend().
+        Returns True if the signal was delivered, False if the process
+        had already finished.  Raises RuntimeError if not connected.
+        """
+        self._ensure_connected()
+        with self._conn.cursor() as cur:  # type: ignore[union-attr]
+            cur.execute("SELECT pg_terminate_backend(%s)", (pid,))
+            result = cur.fetchone()
+            ok = bool(result[0]) if result else False
+        log.info("kill_connection pid=%s  result=%s", pid, ok)
+        return ok
+
+    def vacuum_table(
+        self,
+        schema: str,
+        table: str,
+        full: bool = False,
+        analyze: bool = True,
+    ) -> None:
+        """
+        VACUUM (optionally FULL + ANALYZE) a single table.
+
+        VACUUM cannot run inside a transaction, so this method temporarily
+        switches the connection to autocommit mode regardless of the current
+        setting and restores it afterward.
+
+        Raises RuntimeError if not connected, psycopg2.Error on failure.
+        """
+        self._ensure_connected()
+        old_ac = self._conn.autocommit  # type: ignore[union-attr]
+        self._conn.autocommit = True    # type: ignore[union-attr]
+        try:
+            qual = f'"{schema}"."{table}"'
+            opts: list[str] = []
+            if full:
+                opts.append("FULL")
+            if analyze:
+                opts.append("ANALYZE")
+            cmd = f"VACUUM ({', '.join(opts)}) {qual}" if opts else f"VACUUM {qual}"
+            with self._conn.cursor() as cur:  # type: ignore[union-attr]
+                cur.execute(cmd)
+            log.info("VACUUM complete  schema=%s  table=%s  full=%s  analyze=%s",
+                     schema, table, full, analyze)
+        finally:
+            self._conn.autocommit = old_ac  # type: ignore[union-attr]
+
+    def terminate_connections(
+        self,
+        state: str = "idle",
+        min_idle_mins: int = 0,
+    ) -> int:
+        """
+        Terminate backends matching *state* (e.g. 'idle', 'idle in transaction').
+        If *min_idle_mins* > 0, only terminate connections idle for at least
+        that many minutes.  Never touches the current session.
+
+        Returns the number of backends actually terminated.
+        Raises RuntimeError if not connected.
+        """
+        self._ensure_connected()
+        conditions = ["pid != pg_backend_pid()", "state = %s"]
+        params: list = [state]
+        if min_idle_mins > 0:
+            conditions.append(
+                f"state_change < now() - interval '{int(min_idle_mins)} minutes'"
+            )
+        where = " AND ".join(conditions)
+        with self._conn.cursor() as cur:  # type: ignore[union-attr]
+            cur.execute(
+                f"SELECT count(pg_terminate_backend(pid)) "
+                f"FROM pg_stat_activity WHERE {where}",
+                params,
+            )
+            result = cur.fetchone()
+            n = int(result[0]) if result else 0
+        log.info("terminate_connections state=%r  min_idle_mins=%s  terminated=%s",
+                 state, min_idle_mins, n)
+        return n
+
+    def vacuum_freeze(self) -> None:
+        """
+        Issue VACUUM FREEZE on all tables in the current database.
+
+        This is the standard remedy for approaching XID wraparound.
+        Runs with autocommit=True (required for VACUUM).
+        Can be slow on large databases; run off the UI thread.
+
+        Raises RuntimeError if not connected, psycopg2.Error on failure.
+        """
+        self._ensure_connected()
+        old_ac = self._conn.autocommit  # type: ignore[union-attr]
+        self._conn.autocommit = True    # type: ignore[union-attr]
+        try:
+            with self._conn.cursor() as cur:  # type: ignore[union-attr]
+                cur.execute("VACUUM FREEZE")
+            log.info("VACUUM FREEZE complete")
+        finally:
+            self._conn.autocommit = old_ac  # type: ignore[union-attr]
+
+    # ------------------------------------------------------------------ #
+    #  Recovery mode                                                       #
+    # ------------------------------------------------------------------ #
+
+    def check_recovery_status(self) -> dict:
+        """
+        Return a snapshot of the server's recovery/standby state.
+
+        Keys returned
+        -------------
+        is_in_recovery          : bool
+        last_wal_receive_lsn    : str | None
+        last_wal_replay_lsn     : str | None
+        last_xact_replay_ts     : str | None   (UTC timestamp)
+        replication_delay_secs  : int | None
+        server_start_time       : str
+        pg_version              : str
+        wal_replay_paused       : bool | None  (None on primary)
+
+        Raises RuntimeError when not connected.
+        """
+        self._ensure_connected()
+        with self._conn.cursor() as cur:  # type: ignore[union-attr]
+            cur.execute("""
+                SELECT
+                    pg_is_in_recovery()                                              AS is_in_recovery,
+                    pg_last_wal_receive_lsn()::text                                  AS last_wal_receive_lsn,
+                    pg_last_wal_replay_lsn()::text                                   AS last_wal_replay_lsn,
+                    pg_last_xact_replay_timestamp()::text                            AS last_xact_replay_ts,
+                    EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int
+                                                                                     AS replication_delay_secs,
+                    pg_postmaster_start_time()::text                                 AS server_start_time,
+                    version()                                                         AS pg_version,
+                    pg_is_wal_replay_paused()                                        AS wal_replay_paused
+            """)
+            row = cur.fetchone()
+            cols = [d.name for d in cur.description]
+            return dict(zip(cols, row))
+
+    def promote_standby(self) -> str:
+        """
+        Promote a standby server to primary.
+
+        Tries ``pg_promote()`` (PostgreSQL 12+) first; falls back to
+        ``pg_wal_replay_resume()`` on older versions.
+
+        Returns a human-readable status string.
+        Raises psycopg2.Error or RuntimeError on failure.
+        """
+        self._ensure_connected()
+        with self._conn.cursor() as cur:  # type: ignore[union-attr]
+            try:
+                cur.execute("SELECT pg_promote()")
+                row = cur.fetchone()
+                promoted = row[0] if row else True
+                if promoted:
+                    log.info("pg_promote() succeeded — server promoted to primary")
+                    return "pg_promote() succeeded. The server is now being promoted to primary."
+                else:
+                    return (
+                        "pg_promote() returned false — the server may already be primary "
+                        "or promotion is not allowed from this connection."
+                    )
+            except psycopg2.ProgrammingError:
+                # pg_promote() not available (< PG 12) — try the older approach
+                log.info("pg_promote() unavailable, falling back to pg_wal_replay_resume()")
+                try:
+                    self._conn.rollback()  # type: ignore[union-attr]
+                except Exception:
+                    pass
+            cur.execute("SELECT pg_wal_replay_resume()")
+            log.info("pg_wal_replay_resume() called — standby promoted")
+            return (
+                "pg_wal_replay_resume() called. WAL replay has been resumed/unpaused. "
+                "If the server was in pause mode it is now continuing recovery."
+            )
+
+    # ------------------------------------------------------------------ #
     #  Schema introspection                                                #
     # ------------------------------------------------------------------ #
 

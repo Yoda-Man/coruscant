@@ -28,11 +28,13 @@ def _make_psycopg2_stub():
     class _OpErr(_Err): pass
     class _IfErr(_Err): pass
     class _DbErr(_Err): pass
+    class _ProgErr(_Err): pass
 
     mod.Error              = _Err
     mod.OperationalError   = _OpErr
     mod.InterfaceError     = _IfErr
     mod.DatabaseError      = _DbErr
+    mod.ProgrammingError   = _ProgErr
 
     extras = types.ModuleType("psycopg2.extras")
     exts   = types.ModuleType("psycopg2.extensions")

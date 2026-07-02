@@ -478,9 +478,14 @@ class DatabaseManager:
                                                                                      AS replication_delay_secs,
                     pg_postmaster_start_time()::text                                 AS server_start_time,
                     version()                                                         AS pg_version,
-                    pg_is_wal_replay_paused()                                        AS wal_replay_paused
+                    CASE WHEN pg_is_in_recovery()
+                         THEN pg_is_wal_replay_paused()
+                         ELSE NULL
+                    END                                                              AS wal_replay_paused
             """)
             row = cur.fetchone()
+            if row is None:
+                return {"is_in_recovery": False, "wal_replay_paused": None}
             cols = [d.name for d in cur.description]
             return dict(zip(cols, row))
 

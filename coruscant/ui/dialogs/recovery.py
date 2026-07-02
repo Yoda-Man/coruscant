@@ -191,9 +191,10 @@ class RecoveryDialog(QDialog):
         self._promote_worker: _PromoteWorker | None = None
         self._last_status: dict | None = None
 
-        self.setWindowTitle("Recovery Mode — Database Status")
+        self.setWindowTitle("Server Mode — Database Status")
         self.setMinimumWidth(560)
         self.setMaximumWidth(700)
+        self.setMinimumHeight(500)
         self.setModal(True)
         self.setStyleSheet(_STYLE)
 
@@ -299,7 +300,7 @@ class RecoveryDialog(QDialog):
         scroll.setWidget(body_outer)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setMaximumHeight(340)
+        scroll.setMaximumHeight(16777215)  # QWIDGETSIZE_MAX — uncapped
         root.addWidget(scroll)
 
         # ── Divider ───────────────────────────────────────────────────── #

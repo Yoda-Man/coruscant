@@ -168,9 +168,6 @@ class MainWindow(QMainWindow):
         self._act_commit   = action("Commit",   "COMMIT the current transaction")
         self._act_rollback = action("Rollback", "ROLLBACK the current transaction")
 
-        # Recovery
-        self._act_recovery = action("🔴 Recovery",  "Check / resolve database recovery mode")
-
         # Theme
         self._act_theme   = action("🌙",           "Toggle light / dark theme")
 
@@ -189,7 +186,6 @@ class MainWindow(QMainWindow):
         self._act_autocommit.toggled.connect(self._on_autocommit_toggled)
         self._act_commit.triggered.connect(self._on_commit)
         self._act_rollback.triggered.connect(self._on_rollback)
-        self._act_recovery.triggered.connect(self._on_recovery)
         self._act_theme.triggered.connect(self._on_toggle_theme)
 
         # Layout
@@ -210,8 +206,6 @@ class MainWindow(QMainWindow):
         tb.addSeparator()
         for a in (self._act_autocommit, self._act_commit, self._act_rollback):
             tb.addAction(a)
-        tb.addSeparator()
-        tb.addAction(self._act_recovery)
         tb.addSeparator()
 
         tb.addWidget(QLabel("  Row limit: ", styleSheet="font-size: 11px;"))
@@ -265,7 +259,6 @@ class MainWindow(QMainWindow):
             (self._act_autocommit, "#1A3A4C", "#1E4D66", "#0F2233", False),
             (self._act_commit,     "#1B5E20", "#2E7D32", "#145214", False),
             (self._act_rollback,   "#B71C1C", "#C62828", "#7F0000", False),
-            (self._act_recovery,   "#7B1FA2", "#8E24AA", "#4A0072", False),
             (self._act_theme,      "#212121", "#2D2D2D", "#0A0A0A", False),
         ]
 
@@ -285,19 +278,37 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(4, 0, 8, 0)
         layout.setSpacing(2)
 
-        self._sb_doctor_btn = QPushButton("🩺")
-        self._sb_doctor_btn.setFlat(True)
-        self._sb_doctor_btn.setFixedSize(28, 22)
+        # ── 🩺 Database Doctor button ────────────────────────────────── #
+        self._sb_doctor_btn = QPushButton("🩺 Doctor")
+        self._sb_doctor_btn.setFlat(False)
+        self._sb_doctor_btn.setFixedHeight(22)
         self._sb_doctor_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._sb_doctor_btn.setToolTip("Database Doctor — diagnose and repair common issues")
         self._sb_doctor_btn.setStyleSheet("""
-            QPushButton { font-size: 14px; border: none; background: transparent;
-                          padding: 0; margin-right: 4px; }
-            QPushButton:hover { background: #1e1e2e; border-radius: 4px; }
+            QPushButton {
+                font-size: 11px; font-weight: 600;
+                color: #e0f2f1; background: #00695c;
+                border: 1px solid #004d40;
+                border-radius: 4px; padding: 2px 8px;
+                margin-right: 4px;
+            }
+            QPushButton:hover   { background: #00897b; border-color: #00695c; }
+            QPushButton:pressed { background: #004d40; }
         """)
         self._sb_doctor_btn.clicked.connect(self._on_database_doctor)
         self._sb_doctor_btn.hide()
         layout.addWidget(self._sb_doctor_btn)
+
+        # ── 🟢 Primary / 🔴 Recovery button ─────────────────────────── #
+        self._sb_recovery_btn = QPushButton("🟢 Primary")
+        self._sb_recovery_btn.setFlat(False)
+        self._sb_recovery_btn.setFixedHeight(22)
+        self._sb_recovery_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sb_recovery_btn.setToolTip("Server mode — click to open Recovery dialog")
+        self._sb_recovery_btn.setStyleSheet(self._sb_primary_style())
+        self._sb_recovery_btn.clicked.connect(self._on_recovery)
+        self._sb_recovery_btn.hide()
+        layout.addWidget(self._sb_recovery_btn)
 
         self._sb_conn_btn = QPushButton("● Not connected")
         self._sb_conn_btn.setFlat(True)
@@ -322,6 +333,34 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._sb_disconnect_btn)
 
         self.statusBar().addPermanentWidget(container)
+
+    @staticmethod
+    def _sb_primary_style() -> str:
+        return """
+            QPushButton {
+                font-size: 11px; font-weight: 600;
+                color: #e8f5e9; background: #2e7d32;
+                border: 1px solid #1b5e20;
+                border-radius: 4px; padding: 2px 8px;
+                margin-right: 4px;
+            }
+            QPushButton:hover   { background: #388e3c; border-color: #2e7d32; }
+            QPushButton:pressed { background: #1b5e20; }
+        """
+
+    @staticmethod
+    def _sb_recovery_style() -> str:
+        return """
+            QPushButton {
+                font-size: 11px; font-weight: 700;
+                color: #fff3e0; background: #b71c1c;
+                border: 1px solid #7f0000;
+                border-radius: 4px; padding: 2px 8px;
+                margin-right: 4px;
+            }
+            QPushButton:hover   { background: #c62828; border-color: #b71c1c; }
+            QPushButton:pressed { background: #7f0000; }
+        """
 
     @staticmethod
     def _sb_style(color: str) -> str:
@@ -621,10 +660,11 @@ class MainWindow(QMainWindow):
         self._act_autocommit.setEnabled(can_act and not busy)
         self._act_commit.setEnabled(connected and not busy and not autocommit)
         self._act_rollback.setEnabled(connected and not busy and not autocommit)
-        self._act_recovery.setEnabled(connected and not busy)
         self._schema_browser._refresh_btn.setEnabled(can_act and not busy)
 
         self._sb_doctor_btn.setVisible(connected)
+        self._sb_recovery_btn.setVisible(connected)
+        self._sb_recovery_btn.setEnabled(not busy)
 
         if connected:
             name = self._current_connection_name or "Connected"
@@ -792,9 +832,11 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 "⚠  Database is in RECOVERY MODE — click 🔴 Recovery to investigate."
             )
-            self._act_recovery.setText("🔴 Recovery ⚠")
+            self._sb_recovery_btn.setText("🔴 Recovery ⚠")
+            self._sb_recovery_btn.setStyleSheet(self._sb_recovery_style())
         else:
-            self._act_recovery.setText("🔴 Recovery")
+            self._sb_recovery_btn.setText("🟢 Primary")
+            self._sb_recovery_btn.setStyleSheet(self._sb_primary_style())
 
     def _on_database_doctor(self) -> None:
         """Open the Database Doctor dashboard from the status bar 🩺 button."""
@@ -807,8 +849,8 @@ class MainWindow(QMainWindow):
         from coruscant.ui.dialogs.recovery import RecoveryDialog
         dlg = RecoveryDialog(self._db, parent=self)
         dlg.exec()
-        # Reset button label after the dialog closes (server may now be primary)
-        self._act_recovery.setText("🔴 Recovery")
+        # Re-check recovery state after dialog closes (server may now be primary)
+        self._check_recovery_on_connect()
 
     def _on_results(self, results: list) -> None:
         self._clear_unpinned_result_tabs()

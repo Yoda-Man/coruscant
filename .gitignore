@@ -25,3 +25,6 @@ Thumbs.db
 # Local settings
 .claude/
 settings.local.json
+
+# Agent context (not for version control)
+agent.md

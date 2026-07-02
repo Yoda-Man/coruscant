@@ -472,4 +472,45 @@ Click the **🩺** icon at the bottom-right of the main window, then click **�
 
 | Check | What it detects | Severity triggers |
 |---|---|---|
-| **Lock Contention** | Queries blocked by other sessions (`pg_blocking_pids`) | Warning if any lock exists; Critical if longest wait 
+| **Lock Contention** | Queries blocked by other sessions (`pg_blocking_pids`) | Warning if any lock exists; Critical if longest wait > 60 s |
+| **Table Bloat** | Tables with > 500 dead tuples or > 5 % dead-tuple ratio | Warning for any bloated table; Critical if worst > 30 % or ≥ 10 tables affected |
+| **Connection Exhaustion** | Total connections vs `max_connections`; idle-in-transaction count | Warning at 70 % or ≥ 2 idle-in-txn; Critical at 85 % or ≥ 5 idle-in-txn |
+| **XID Wraparound** | Transaction ID age as a percentage of the 2-billion limit | Warning at 40 %; Critical at 70 % |
+
+### One-Click Repairs
+
+Each card exposes targeted repair buttons — all require a confirmation prompt before executing:
+
+- **Kill Blocker** — terminates the blocking backend via `pg_terminate_backend(pid)`. Select the blocking row in the Locks table first.
+- **VACUUM Selected** — runs `VACUUM ANALYZE` on the highlighted bloated table.
+- **VACUUM All** — runs `VACUUM ANALYZE` on every table shown in the Bloat list.
+- **Terminate Idle** — terminates all backends in the `idle` state (excludes the current session).
+- **Terminate Idle-in-Txn** — terminates all `idle in transaction` backends, which are the most dangerous for connection exhaustion.
+- **VACUUM FREEZE** — runs `VACUUM FREEZE` on the entire connected database to reset transaction ID age. This is the standard remedy for approaching XID wraparound.
+
+> **Note:** VACUUM FREEZE operates on the currently connected database only. If the most critical database in the wraparound list is a different database, reconnect to it first.
+
+All repair operations run in a background thread. The diagnosis re-runs automatically after each repair so you see the updated state immediately.
+
+## Security Notes
+
+- **Passwords with special characters are handled correctly.** The connection uses `psycopg2.connect()` keyword arguments — not a URI or DSN string — so characters like `$`, `@`, `%`, `&`, `/`, and spaces are passed to the PostgreSQL driver as-is. This matters for auto-generated passwords from cloud providers and secret managers, which routinely include these characters.
+- Passwords are base64-encoded in the OS settings store, not encrypted. Treat the store as sensitive.
+- Use `verify-full` SSL for production connections over untrusted networks.
+- The Script Manager never executes uploaded scripts during indexing; analysis is text-only.
+- No telemetry, no analytics, no external network calls from any part of the application.
+
+## Known Limitations
+
+| Area | Detail |
+|---|---|
+| Dollar-quoted strings | Highlighter handles `$$…$$` on a single line only |
+| Single connection | All editor tabs share one PostgreSQL connection |
+| No `.pgpass` support | Connection parameters must be entered manually |
+| Script Manager graph | Built with NetworkX; requires `pip install networkx>=2.6` |
+
+> **Not a limitation:** passwords containing `$`, `@`, `%`, or any other special character. Coruscant handles these correctly by design.
+
+## Changelog
+
+See [change.md](change.md) for the full version history.

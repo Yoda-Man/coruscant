@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.0.4  
+**Version:** 1.0.8  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -40,6 +40,8 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Database Doctor (🩺):** a one-stop diagnostic and repair panel accessible from the status bar footer whenever connected. Four health checks run in the background — lock contention, table bloat, connection exhaustion, and XID wraparound — each displayed on a colour-coded severity card (green / amber / red). Every card comes with targeted repair buttons: kill the blocking query, VACUUM a bloated table, terminate idle connections, and run VACUUM FREEZE to reset transaction ID age. All repairs require confirmation and execute off the UI thread so the application stays responsive.
 
+**Live Database Monitor (📊):** a real-time observability dashboard, also in the status bar footer. It samples `pg_stat_*` on a background thread and auto-refreshes at a selectable interval (2s–60s), presenting ten colour-coded KPI gauges (size, connections vs `max_connections`, cache-hit %, transactions/sec, active queries, uptime, row writes/sec, rows read/sec, blocked sessions, commit ratio), four live sparklines, and ten drill-down tabs (activity, connections, tables, indexes, cache, databases, locks, replication, top queries, settings). Non-modal, so you can keep querying while it runs.
+
 **Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat", entirely offline, no LLM required.
 
 **Automated schema health checks (QA Engine):** right-click any schema to run six checks in a background thread orphaned tables, missing FK indexes (with generated `CREATE INDEX CONCURRENTLY` fix scripts), circular FK cycles, nullable FKs, snake_case naming violations, and type inconsistencies. Results appear in a colour-coded dialog with a 0–100 health score badge. Findings can be suppressed per-table or check-wide, exported to CSV, and used to jump-search the Script Manager.
@@ -74,6 +76,7 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 22. [Logging](#logging)
 23. [Recovery Mode](#recovery-mode)
 24. [Database Doctor](#database-doctor)
+25. [Live Database Monitor](#live-database-monitor)
 25. [Security Notes](#security-notes)
 26. [Known Limitations](#known-limitations)
 27. [Changelog](#changelog)
@@ -491,6 +494,18 @@ Each card exposes targeted repair buttons — all require a confirmation prompt 
 > **Note:** VACUUM FREEZE operates on the currently connected database only. If the most critical database in the wraparound list is a different database, reconnect to it first.
 
 All repair operations run in a background thread. The diagnosis re-runs automatically after each repair so you see the updated state immediately.
+
+## Live Database Monitor
+
+The **Live Database Monitor** (📊) lives in the status bar footer alongside the Doctor and is visible whenever a database connection is active. Where the Doctor diagnoses and repairs, the Monitor observes: it samples the server on a timer and renders its health, throughput, and activity in real time.
+
+Click **📊 Dashboard** to open it. The window is non-modal, so you can keep writing and running queries while it updates, and it auto-refreshes on a background thread (default every 5 seconds; pause or choose 2s / 5s / 10s / 30s / 60s).
+
+- **Ten KPI gauges** — database size, connections vs `max_connections`, cache-hit %, transactions/sec, active queries with longest running duration, uptime, row writes/sec, rows read/sec, blocked sessions, and commit ratio. Connection, cache, and lock gauges are colour-coded.
+- **Four live sparklines** — transactions/sec, connection count, cache-hit %, and rows-returned/sec, each with a rolling window and min/max/current overlays.
+- **Ten detail tabs** — Activity, Connections, Tables, Indexes, Cache, Databases, Locks, Replication, Top Queries (via `pg_stat_statements` when available), and Settings.
+
+All SQL and rate math live in the GUI-free `coruscant/core/metrics.py`; the UI is `coruscant/ui/dialogs/dashboard.py`. Per-second rates are computed as deltas between consecutive samples, with statistics-reset detection to avoid false spikes.
 
 ## Security Notes
 

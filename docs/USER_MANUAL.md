@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.0.7
+**Version:** 1.0.8
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -78,7 +78,9 @@
     - 22.3 [The Recovery Dialog](#223-the-recovery-dialog)
     - 22.4 [Promoting to Primary — One Click](#224-promoting-to-primary--one-click)
     - 22.5 [Safety Considerations](#225-safety-considerations)
-23. [Security Guidance](#23-security-guidance)
+23. [Database Doctor](#23-database-doctor)
+24. [Live Database Monitor](#24-live-database-monitor)
+25. [Security Guidance](#25-security-guidance)
 
 ---
 
@@ -1275,7 +1277,73 @@ Both buttons require a confirmation prompt.
 
 ---
 
-## 24. Security Guidance
+## 24. Live Database Monitor
+
+The **Live Database Monitor** is a real-time dashboard that samples your PostgreSQL server on a timer and presents its health, throughput, and activity at a glance. Where the Database Doctor is diagnose-and-repair, the Monitor is observe-and-understand.
+
+### 24.1 Opening the Monitor
+
+Click the **📊 Dashboard** button in the status bar footer (visible whenever a database connection is active). The window opens and takes its first sample immediately, then refreshes automatically.
+
+The Monitor is **non-modal** — you can leave it open and keep writing and running queries in the main window while it updates. Re-clicking the button brings the existing window to the front rather than opening a second copy.
+
+### 24.2 Auto-refresh
+
+By default the dashboard refreshes every **5 seconds**. Use the controls on the top bar to:
+
+- **Pause / resume** auto-refresh with the *Auto-refresh* checkbox (the green ● live indicator dims when paused).
+- **Change the interval** — choose 2s, 5s, 10s, 30s, or 60s.
+- **Refresh manually** at any time with the **🔄 Refresh** button.
+
+All sampling runs in a background thread, so refreshes never freeze the UI.
+
+### 24.3 KPI Gauges
+
+A strip of ten live gauges summarises the server at a glance. Several are colour-coded (green / amber / red) so problems stand out immediately:
+
+| Gauge | Shows |
+|-------|-------|
+| **Database Size** | Total size of the connected database |
+| **Connections** | Active backends vs `max_connections`, with idle / in-transaction counts (amber ≥ 70 %, red ≥ 85 %) |
+| **Cache Hit** | Buffer-cache hit ratio (amber < 99 %, red < 90 %) |
+| **Transactions/s** | Commit + rollback rate, computed between refreshes |
+| **Active Queries** | Currently executing statements and the longest running duration |
+| **Uptime** | Time since the server last started |
+| **Row Writes/s** | Insert + update + delete tuple rate |
+| **Rows Read/s** | Tuples returned per second |
+| **Blocked / Locks** | Sessions blocked on a lock (red when any are blocked) |
+| **Commit Ratio** | Committed vs rolled-back transactions, with the deadlock count |
+
+### 24.4 Live Sparklines
+
+Below the gauges, four rolling trend charts plot the recent history of **transactions/sec**, **connection count**, **cache-hit %**, and **rows-returned/sec**. Each shows the current value plus the window minimum and maximum, making spikes and trends obvious.
+
+### 24.5 Detail Tabs
+
+The lower area breaks the server down across ten drill-down tabs:
+
+| Tab | Contents |
+|-----|----------|
+| **⚡ Activity** | Every non-idle backend right now — user, application, client, state, wait event, duration, and query text |
+| **🔌 Connections** | Connection counts by state, and a breakdown by user / application / client host |
+| **📊 Tables** | Largest tables with size, dead-tuple %, sequential vs index scans, and last vacuum / analyze |
+| **🔍 Indexes** | Index usage counts — surfaces unused indexes that only cost write throughput |
+| **💾 Cache** | Per-table buffer-cache hit ratio |
+| **🗄 Databases** | Every database on the cluster with size and activity |
+| **🔒 Locks** | Blocked and blocking sessions |
+| **🔁 Replication** | Streaming standby status and lag (empty when there are no standbys) |
+| **🐢 Top Queries** | Slowest statements by total execution time (requires the `pg_stat_statements` extension) |
+| **⚙ Settings** | Key performance-related server settings (`shared_buffers`, `work_mem`, `effective_cache_size`, and more) |
+
+Each tab degrades gracefully: if a query returns nothing, or an optional extension such as `pg_stat_statements` is not installed, the tab shows a friendly note instead of blanking.
+
+### 24.6 How Rates Are Calculated
+
+Per-second rates (transactions, tuple activity, interval cache-hit) are computed as the **difference between two consecutive samples** divided by the elapsed time. The very first sample after opening therefore shows "collecting…" for rate gauges until a second sample arrives. If PostgreSQL statistics are reset while the Monitor is open, that data point is skipped so the charts never show a false spike.
+
+---
+
+## 25. Security Guidance
 
 ### Passwords with Special Characters
 
@@ -1331,6 +1399,24 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 ---
 
 *Author: Marwa Trust Mutemasango*
+
+---
+
+## What's New in 1.0.8
+
+**Version 1.0.8** adds the Live Database Monitor — a real-time observability dashboard to complement the Database Doctor.
+
+### New: Live Database Monitor (📊)
+
+Click the **📊 Dashboard** button in the status bar footer (visible whenever connected) to open a real-time monitoring window that auto-refreshes at a selectable interval (2s / 5s / 10s / 30s / 60s) on a background thread:
+
+- **Ten KPI gauges** — database size, connection usage vs `max_connections`, cache-hit %, transactions/sec, active queries, uptime, row writes/sec, rows read/sec, blocked sessions, and commit ratio. Connection, cache, and lock gauges are colour-coded.
+- **Four live sparklines** — transactions/sec, connections, cache-hit %, and rows-returned/sec, drawn with a rolling window and min/max/current overlays.
+- **Ten detail tabs** — Activity, Connections, Tables, Indexes, Cache, Databases, Locks, Replication, Top Queries (`pg_stat_statements`), and Settings.
+
+The dialog is non-modal, so you can keep querying while it runs. Per-second rates are computed as deltas between refreshes, with automatic detection of statistics resets to avoid false spikes.
+
+See [§24 Live Database Monitor](#24-live-database-monitor) for the full reference.
 
 ---
 

@@ -88,8 +88,8 @@ if sys.platform == 'darwin':
         info_plist={
             'CFBundleName':             'Coruscant',
             'CFBundleDisplayName':      'Coruscant',
-            'CFBundleShortVersionString': '1.0.7',
-            'CFBundleVersion':          '1.0.7',
+            'CFBundleShortVersionString': '1.0.8',
+            'CFBundleVersion':          '1.0.8',
             'NSHighResolutionCapable':  True,
             'NSPrincipalClass':         'NSApplication',
             'NSRequiresAquaSystemAppearance': False,

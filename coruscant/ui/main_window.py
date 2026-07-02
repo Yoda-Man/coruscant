@@ -299,6 +299,29 @@ class MainWindow(QMainWindow):
         self._sb_doctor_btn.hide()
         layout.addWidget(self._sb_doctor_btn)
 
+        # ── 📊 Live Monitoring Dashboard button ────────────── #
+        self._sb_dashboard_btn = QPushButton("📊 Dashboard")
+        self._sb_dashboard_btn.setFlat(False)
+        self._sb_dashboard_btn.setFixedHeight(22)
+        self._sb_dashboard_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sb_dashboard_btn.setToolTip(
+            "Live Database Monitor — real-time metrics, activity, and health"
+        )
+        self._sb_dashboard_btn.setStyleSheet("""
+            QPushButton {
+                font-size: 11px; font-weight: 600;
+                color: #e3f2fd; background: #1565c0;
+                border: 1px solid #0d47a1;
+                border-radius: 4px; padding: 2px 8px;
+                margin-right: 4px;
+            }
+            QPushButton:hover   { background: #1976d2; border-color: #1565c0; }
+            QPushButton:pressed { background: #0d47a1; }
+        """)
+        self._sb_dashboard_btn.clicked.connect(self._on_dashboard)
+        self._sb_dashboard_btn.hide()
+        layout.addWidget(self._sb_dashboard_btn)
+
         # ── 🟢 Primary / 🔴 Recovery button ─────────────────────────── #
         self._sb_recovery_btn = QPushButton("🟢 Primary")
         self._sb_recovery_btn.setFlat(False)
@@ -663,6 +686,7 @@ class MainWindow(QMainWindow):
         self._schema_browser._refresh_btn.setEnabled(can_act and not busy)
 
         self._sb_doctor_btn.setVisible(connected)
+        self._sb_dashboard_btn.setVisible(connected)
         self._sb_recovery_btn.setVisible(connected)
         self._sb_recovery_btn.setEnabled(not busy)
 
@@ -843,6 +867,18 @@ class MainWindow(QMainWindow):
         from coruscant.ui.dialogs.doctor import DatabaseDoctorDialog
         dlg = DatabaseDoctorDialog(self._db, parent=self)
         dlg.exec()
+
+    def _on_dashboard(self) -> None:
+        """Open the live Database Monitoring dashboard from the status bar."""
+        from coruscant.ui.dialogs.dashboard import DashboardDialog
+        # Reuse an already-open, non-modal dashboard rather than stacking copies.
+        existing = getattr(self, "_dashboard_dlg", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+        self._dashboard_dlg = DashboardDialog(self._db, parent=self)
+        self._dashboard_dlg.show()
 
     def _on_recovery(self) -> None:
         """Open the Recovery Mode dialog."""

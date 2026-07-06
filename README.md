@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.0.8  
+**Version:** 1.0.9  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -45,6 +45,8 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 **Offline script search:** the Support Script Manager indexes your SQL script collections into a statistical knowledge graph (TF-IDF + PageRank + community detection) and answers natural-language queries like "fix deadlock" or "table bloat", entirely offline, no LLM required.
 
 **Automated schema health checks (QA Engine):** right-click any schema to run six checks in a background thread orphaned tables, missing FK indexes (with generated `CREATE INDEX CONCURRENTLY` fix scripts), circular FK cycles, nullable FKs, snake_case naming violations, and type inconsistencies. Results appear in a colour-coded dialog with a 0–100 health score badge. Findings can be suppressed per-table or check-wide, exported to CSV, and used to jump-search the Script Manager.
+
+**Visual Query Builder (⚡):** right-click any schema and choose ⚡ Query Builder to compose a SELECT without typing SQL. Pick a base table, stack INNER / LEFT / RIGHT joins — foreign keys are parsed automatically so the ON clause pre-fills itself — tick the output fields per table, and add WHERE / ORDER BY / LIMIT. A live syntax-highlighted preview updates on every change; insert the finished statement into the active editor tab or copy it to the clipboard.
 
 **Entity-Relationship Diagrams (ERD):** right-click any schema and choose Generate ERD to produce a Mermaid `erDiagram` opened as a self-contained HTML page. Every table is shown as an entity box with column names, types, and PK markers; FK relationships are drawn as one-to-many edges. The page includes pan, zoom, and fit controls plus a collapsible Mermaid source panel for copy-paste into any Mermaid editor.
 
@@ -176,6 +178,7 @@ coruscant/
 │   │   ├── guide.py         # ShortcutGuideDialog
 │   │   ├── message.py       # StyledMessageBox
 │   │   ├── qa_dialog.py     # QADialog — findings table, suppress, export, find scripts
+│   │   ├── query_builder.py # QueryBuilderDialog — visual SELECT builder with joins
 │   │   └── script_manager_dialog.py  # ScriptManagerDialog
 │   └── panels/
 │       ├── schema.py        # SchemaBrowser + Settings panel + _MindMapWorker + _QAWorker
@@ -269,7 +272,7 @@ public (schema)
 ```
 
 - **▶ SELECT** button → `SELECT * FROM "schema"."table" LIMIT 100;` at cursor  
-- **Right-click a schema** → SELECT / UPDATE / DELETE templates, **Generate ERD**, **🗺 Mind Map**, **🔍 QA Engine**  
+- **Right-click a schema** → **⚡ Query Builder**, **Generate ERD**, **🗺 Mind Map**, **🔍 QA Engine**  
 - **Right-click a table** → SELECT / UPDATE / DELETE script templates, **🗺 Mind Map from here**  
 - **⚙ Settings** → toggle Auto-complete, Line numbers, Cell-viewer auto-close, **Run QA Engine on connect**  
 - **? Guide** → opens the full in-app quick-reference guide

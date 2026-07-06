@@ -18,6 +18,9 @@ Tree layout
 
 Interactions
 ------------
+Right-clicking a schema shows Query Builder / ERD / Mind Map / QA Engine.
+The Query Builder is a visual dialog for composing SELECTs with INNER /
+LEFT / RIGHT joins and per-column field selection; it emits ``insert_sql``.
 Double-clicking a table emits ``insert_sql`` with a SELECT template.
 Double-clicking a function emits ``insert_sql`` with a SELECT call template.
 Right-clicking a table shows a context menu with three script generators:
@@ -142,6 +145,7 @@ class SchemaBrowser(QWidget):
     def __init__(self, db: DatabaseManager, parent=None) -> None:
         super().__init__(parent)
         self._db            = db
+        self._tree_data:    list = []
         self._worker:       _SchemaWorker  | None = None
         self._qa_worker:    _QAWorker      | None = None
         self._mm_worker:    _MindMapWorker | None = None
@@ -341,6 +345,7 @@ class SchemaBrowser(QWidget):
             self._run_qa(first_schema)
 
     def _populate_tree(self, tree: list) -> None:
+        self._tree_data = tree
         self._refresh_btn.setEnabled(True)
         self._status.setText("")
         self._tree.clear()
@@ -499,6 +504,8 @@ class SchemaBrowser(QWidget):
         if kind == "schema":
             schema = data["schema"]
             menu = QMenu(self._tree)
+            menu.addAction("⚡ Query Builder", lambda: self._open_query_builder(schema))
+            menu.addSeparator()
             menu.addAction("📐 Generate ERD", lambda: self._generate_erd(schema))
             menu.addAction("\U0001f5fa Mind Map",   lambda: self._open_mind_map(schema, None))
             menu.addAction("\U0001f50d QA Engine",  lambda: self._run_qa(schema))
@@ -519,6 +526,22 @@ class SchemaBrowser(QWidget):
         menu.addSeparator()
         menu.addAction("\U0001f5fa Mind Map from here", lambda: self._open_mind_map(schema, table))
         menu.exec(self._tree.viewport().mapToGlobal(pos))
+
+    def _open_query_builder(self, schema: str) -> None:
+        """Open the visual Query Builder dialog for *schema*."""
+        from coruscant.ui.dialogs.query_builder import QueryBuilderDialog
+
+        tables = next(
+            (s.get("tables", []) for s in self._tree_data
+             if s.get("schema") == schema),
+            [],
+        )
+        if not tables:
+            self._status.setText(f"No tables in schema '{schema}'")
+            return
+        dlg = QueryBuilderDialog(schema, tables, parent=self)
+        dlg.insert_sql.connect(self.insert_sql.emit)
+        dlg.exec()
 
     def _open_mind_map(self, schema: str, focus_table: str | None) -> None:
         """Generate a D3 mind map for *schema*, optionally focused on *focus_table*."""

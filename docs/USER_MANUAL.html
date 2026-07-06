@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Coruscant v1.0.8 &mdash; User Manual</title>
+<title>Coruscant v1.0.9 &mdash; User Manual</title>
 <style>
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -110,7 +110,7 @@
 <nav id="sidebar">
   <div id="sidebar-header">
     <div class="app-name">Coruscant</div>
-    <div class="app-sub">User Manual &middot; v1.0.8</div>
+    <div class="app-sub">User Manual &middot; v1.0.9</div>
   </div>
   <div id="toc">
     <a href="#coruscant-user-manual">Coruscant User Manual</a>
@@ -162,6 +162,7 @@
     <a href="#235-xid-wraparound" class="toc-sub" style="padding-left:40px">23.5 XID Wraparound</a>
     <a href="#24-live-database-monitor" class="toc-sub">24. Live Database Monitor</a>
     <a href="#25-security-guidance" class="toc-sub">25. Security Guidance</a>
+    <a href="#whats-new-109" class="toc-sub">What's New in 1.0.9</a>
     <a href="#whats-new-108" class="toc-sub">What's New in 1.0.8</a>
     <a href="#whats-new-106" class="toc-sub">What's New in 1.0.7</a>
     <a href="#whats-new-105" class="toc-sub">What's New in 1.0.5</a>
@@ -172,7 +173,7 @@
 <main id="content">
   <div id="hero">
     <img src="coruscant.png" alt="Coruscant">
-    <div class="meta"><div class="version-badge">v1.0.8</div><br>
+    <div class="meta"><div class="version-badge">v1.0.9</div><br>
     PostgreSQL Multi-Query Tool &nbsp;&middot;&nbsp; User Manual</div>
   </div>
 <h1 id="coruscant-user-manual" class="section-anchor">Coruscant User Manual</h1>
@@ -228,6 +229,7 @@
 <li>9.2 <a href="#92-generating-scripts-from-a-table">Generating Scripts from a Table or Schema</a></li>
 <li>9.3 <a href="#93-inserting-a-select-statement">Inserting a SELECT Statement</a></li>
 <li>9.4 <a href="#94-refreshing-the-schema">Refreshing the Schema</a></li>
+<li>9.5 <a href="#95-visual-query-builder">Visual Query Builder</a></li>
 <li><a href="#10-qa-engine">QA Engine</a></li>
 <li>10.1 <a href="#101-running-the-qa-engine">Running the QA Engine</a></li>
 <li>10.2 <a href="#102-understanding-the-results">Understanding the Results</a></li>
@@ -839,6 +841,10 @@ SELECT count(*) FROM orders;
 </thead>
 <tbody>
 <tr>
+<td><strong>&#x26A1; Query Builder</strong></td>
+<td>Opens the visual Query Builder &mdash; compose a SELECT with joins and field selection (see <a href="#95-visual-query-builder">§9.5</a>)</td>
+</tr>
+<tr>
 <td><strong>Generate ERD</strong></td>
 <td>Opens an entity-relationship diagram for the schema in your browser</td>
 </tr>
@@ -914,6 +920,56 @@ WHERE &quot;id&quot; = ;
 <blockquote>
 <p><strong>Tip:</strong> If the Schema Browser shows nothing after connecting, verify that you connected to the correct database. The <code>postgres</code> system database contains almost no user objects. Check the connection dialog's <strong>Database</strong> field.</p>
 </blockquote>
+<h3 id="95-visual-query-builder">9.5 Visual Query Builder</h3>
+<p><strong>Right-click any schema</strong> and choose <strong>&#x26A1; Query Builder</strong> to compose a SELECT statement visually &mdash; no SQL typing required.</p>
+<p>The dialog is split into four areas:</p>
+<p><strong>FROM &mdash; base table.</strong> Pick the table the query starts from.</p>
+<p><strong>Joins.</strong> Click <strong>&#xFF0B; Add Join</strong> to stack as many joins as you need. Each join row lets you choose:</p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Join type</td>
+<td><strong>INNER JOIN</strong>, <strong>LEFT JOIN</strong>, or <strong>RIGHT JOIN</strong></td>
+</tr>
+<tr>
+<td>Table</td>
+<td>The table being joined in</td>
+</tr>
+<tr>
+<td>ON &hellip; = &hellip;</td>
+<td>Left side: any column from the tables already in the query; right side: a column of the joined table</td>
+</tr>
+<tr>
+<td>&#x2715;</td>
+<td>Remove the join</td>
+</tr>
+</tbody>
+</table>
+<p>When you pick a join table, Coruscant checks the schema's foreign-key definitions. If a FK links the new table to any table already in the query, the <code>ON</code> condition is filled in automatically and the row shows an <strong>&#x26A1; auto-linked</strong> badge &mdash; hover it to see the detected relationship. You can still override either side manually.</p>
+<p><strong>Select fields.</strong> Every table in the query appears with its columns and data types. Tick the columns you want in the output, or use <strong>All</strong> / <strong>None</strong>. If nothing is ticked the query falls back to <code>SELECT *</code>.</p>
+<p><strong>Options and preview.</strong> An optional <strong>WHERE</strong> expression, an <strong>ORDER BY</strong> column with ASC/DESC, and a <strong>LIMIT</strong> spinner (on by default, 100). Below them, a <strong>live syntax-highlighted SQL preview</strong> regenerates on every change.</p>
+<p><strong>Example</strong> &mdash; <code>applicant_relationship</code> joined to <code>applicant</code>:</p>
+<pre><code class="language-sql">SELECT
+    &quot;applicant_relationship&quot;.&quot;related_applicant_id&quot;,
+    &quot;applicant_relationship&quot;.&quot;status&quot;,
+    &quot;applicant_relationship&quot;.&quot;valid_from&quot;,
+    &quot;applicant_relationship&quot;.&quot;valid_to&quot;
+FROM &quot;epass_application&quot;.&quot;applicant_relationship&quot;
+INNER JOIN &quot;epass_application&quot;.&quot;applicant&quot;
+    ON &quot;applicant_relationship&quot;.&quot;related_applicant_id&quot; = &quot;applicant&quot;.&quot;applicant_id&quot;
+LIMIT 100;
+</code></pre>
+<p>When you are happy with the statement:</p>
+<ul>
+<li><strong>&#x29C9; Copy SQL</strong> &mdash; copies the preview to the clipboard.</li>
+<li><strong>&#x25B6; Insert into Editor</strong> &mdash; inserts the statement at the cursor in the active editor tab and closes the dialog. Like the script generators, the SQL is <strong>never executed automatically</strong> &mdash; press <strong>F5</strong> or <strong>Ctrl+Enter</strong> when ready.</li>
+</ul>
 <hr />
 <h2 id="10-qa-engine" class="section-anchor">10. QA Engine</h2>
 <p>The <strong>QA Engine</strong> performs an automated health check on your PostgreSQL schema. It runs six checks in a background thread and presents the results in a colour-coded dialog with a 0&ndash;100 health score.</p>
@@ -1555,6 +1611,19 @@ for the file location and how to filter it.</p>
 <p>Coruscant uses <code>cursor.mogrify()</code> for parameterized queries, which safely escapes all values. However, if you manually concatenate user-supplied strings into your SQL, those queries are not protected. Always use the Parameters panel for variable values.</p>
 <hr />
 <p><em>Author: Marwa Trust Mutemasango</em></p>
+<hr />
+<h2 id="whats-new-109" class="section-anchor">What&#8217;s New in 1.0.9</h2>
+<p><strong>Version 1.0.9</strong> adds the Visual Query Builder&mdash;a point-and-click way to compose SELECT statements with joins.</p>
+<h3>New: Visual Query Builder (&#x26A1;)</h3>
+<p>Right-click any schema in the Schema Browser and choose <strong>&#x26A1; Query Builder</strong>:</p>
+<ul>
+<li><strong>Base table + stackable joins</strong> &mdash; add any number of <strong>INNER / LEFT / RIGHT joins</strong>, each with an <code>ON left = right</code> condition and one-click removal.</li>
+<li><strong>&#x26A1; Auto-linked joins</strong> &mdash; foreign keys are parsed from the schema metadata; picking a join table pre-fills the ON clause automatically when a FK relationship exists.</li>
+<li><strong>Field selection</strong> &mdash; tick output columns per table (with All/None shortcuts); nothing ticked means <code>SELECT *</code>.</li>
+<li><strong>WHERE / ORDER BY / LIMIT</strong> controls and a <strong>live syntax-highlighted SQL preview</strong> that updates on every change.</li>
+<li><strong>&#x29C9; Copy SQL</strong> or <strong>&#x25B6; Insert into Editor</strong> &mdash; the statement lands at the cursor in the active tab and is never executed automatically.</li>
+</ul>
+<p>See <a href="#95-visual-query-builder">§9.5 Visual Query Builder</a> for the full reference.</p>
 <hr />
 <h2 id="whats-new-108" class="section-anchor">What&#8217;s New in 1.0.8</h2>
 <p><strong>Version 1.0.8</strong> adds the Live Database Monitor&mdash;a real-time observability dashboard to complement the Database Doctor.</p>

@@ -1,5 +1,12 @@
 # Changelog
 
+### 1.0.9
+- **New — Visual Query Builder (⚡)** — right-click any schema in the Schema Browser and choose **⚡ Query Builder** to compose a SELECT statement visually. Pick a base table, stack any number of **INNER / LEFT / RIGHT joins**, and tick the output fields per table (nothing ticked = `SELECT *`). Optional WHERE, ORDER BY (with ASC/DESC), and LIMIT controls round out the statement.
+- **New — FK auto-linking** — when a join table is selected, the builder parses the schema's foreign-key definitions and pre-fills the `ON` condition automatically, flagging it with an **⚡ auto-linked** badge (hover for the detected relationship).
+- **New — Live SQL preview** — a syntax-highlighted preview regenerates on every change. **⧉ Copy SQL** copies it to the clipboard; **▶ Insert into Editor** places it at the cursor in the active editor tab (never executed automatically), matching the behaviour of the existing script generators.
+- **Fixed — Query Builder field list truncation** — column and table names in the Select Fields tree now resize to their contents instead of being cut off (e.g. `rel…`, `sta…`); a horizontal scrollbar appears when needed.
+- **Version bump** — updated to 1.0.9 across all files and documentation.
+
 ### 1.0.8
 - **New — Live Database Monitor (📊)** — click the **📊 Dashboard** button in the status-bar footer (visible when connected) to open a real-time monitoring window. Metrics are sampled from `pg_stat_*` views on a background thread and auto-refresh at a selectable interval (2s / 5s / 10s / 30s / 60s), so the UI never blocks. Auto-refresh can be paused and the view refreshed manually at any time. The dialog is non-modal — you can keep querying while it runs — and re-opening focuses the existing window instead of stacking copies.
 - **New — KPI gauges** — a strip of ten live gauges: database size, connection usage vs `max_connections` (colour-coded), buffer cache-hit %, transactions/sec, active queries with longest-running duration, server uptime, row writes/sec (insert/update/delete), rows read/sec, blocked sessions / lock waits, and commit ratio with deadlock count.
@@ -125,4 +132,33 @@
 ### 0.9.3
 - **Premium message dialogs** — all `QMessageBox` calls replaced with `StyledMessageBox`: each dialog shows the Coruscant banner image, a colour-coded header strip (green / amber / red for info / warning / error), and a dark-themed body with selectable text.
 - **Connection dialog — banner enlarged** — banner image scaled to 130 px height with aspect-ratio-preserving smooth scaling; subtitle text removed (redundant with banner artwork).
-- **Toolbar Connect / Disconnect toggle** — the two buttons now swap visibility on connection state cha
+- **Toolbar Connect / Disconnect toggle** — the two buttons now swap visibility on connection state change so only the relevant action occupies toolbar space, giving all other buttons room to show their full labels.
+
+### 0.9.2
+- Documentation cleanup and repository hygiene improvements.
+
+### 0.9.1
+- **Structured logging** — rotating log file written on every run (`logging_config.py`).
+  Level controlled by `CORUSCANT_LOG_LEVEL` env var; default `INFO`, set `DEBUG` for full SQL traces.
+- **Crash handler** — `sys.excepthook` logs unhandled exceptions with full tracebacks and shows a user-facing dialog with the log file path.
+- **Qt message routing** — Qt's internal warnings and errors are now captured via `qInstallMessageHandler` and written to the log under the `Qt` logger.
+- **Startup environment snapshot** — each session logs Python, PySide6, Qt, and OS version at `INFO`.
+- **Window geometry persistence** — window size, position, dock layout, and both splitter positions are saved to QSettings on close and restored on next launch.
+- **Graceful shutdown** — `closeEvent` logs the shutdown, saves geometry, and disconnects cleanly from the database.
+- **Schema browser context menu** — right-click any table to generate a ready-to-edit SELECT, UPDATE, or DELETE script populated with the table's actual column names.
+- **Dark mode arrow fix** — QSpinBox and QComboBox up/down/drop-down arrows are now visible in dark mode using CSS triangle rendering.
+
+### 0.9.0  *(initial public release)*
+- Renamed from DBClient → **Coruscant**
+- Clean layered architecture: `core/`, `ui/`, `utils/` packages
+- Cancel query (⏹ / Escape) works during both Execute and EXPLAIN
+- Cancelled queries show a status bar message with no error dialog
+- Transaction mode: Auto-commit toggle + Commit / Rollback
+- SSL mode selector in connection dialog
+- Passwords base64-encoded in QSettings (no more plaintext)
+- Expanded schema browser: indexes, foreign keys, functions/procedures
+- Result filter uses `setRowHidden` (O(n), no widget reconstruction)
+- Errors shown as inline **ErrorResult** tabs with no blocking modals
+- Dropped connections detected after query errors
+- Keyboard shortcuts: Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab
+- Author: Marwa Trust Mutemasango

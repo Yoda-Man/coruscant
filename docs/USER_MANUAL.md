@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.0.8
+**Version:** 1.0.9
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -53,6 +53,7 @@
    - 9.2 [Generating Scripts from a Table](#92-generating-scripts-from-a-table)
    - 9.3 [Inserting a SELECT Statement](#93-inserting-a-select-statement)
    - 9.4 [Refreshing the Schema](#94-refreshing-the-schema)
+   - 9.5 [Visual Query Builder](#95-visual-query-builder)
 10. [QA Engine](#10-qa-engine)
     - 10.1 [Running the QA Engine](#101-running-the-qa-engine)
     - 10.2 [Understanding the Results](#102-understanding-the-results)
@@ -593,6 +594,7 @@ public                          ← schema (bold)
 
 | Menu option | What it does |
 |---|---|
+| **⚡ Query Builder** | Opens the visual Query Builder — compose a SELECT with joins and field selection (see [§9.5](#95-visual-query-builder)) |
 | **Generate ERD** | Opens an entity-relationship diagram for the schema in your browser |
 | **🗺 Mind Map** | Opens a D3.js force-directed graph of all tables and FK relationships (see [§11.1](#111-schema-mind-map)) |
 | **🔍 QA Engine** | Runs an automated health check on the schema (see [§10](#10-qa-engine)) |
@@ -656,6 +658,48 @@ SELECT "public"."get_active_users"();
 The schema tree is loaded automatically when you connect. If you make schema changes (e.g. `CREATE TABLE`, `ALTER TABLE`) click the **Refresh** button at the top of the Schema Browser to reload the tree.
 
 > **Tip:** If the Schema Browser shows nothing after connecting, verify that you connected to the correct database. The `postgres` system database contains almost no user objects. Check the connection dialog's **Database** field.
+
+### 9.5 Visual Query Builder
+
+**Right-click any schema** and choose **⚡ Query Builder** to compose a SELECT statement visually — no SQL typing required.
+
+The dialog is split into four areas:
+
+**FROM — base table.** Pick the table the query starts from.
+
+**Joins.** Click **＋ Add Join** to stack as many joins as you need. Each join row lets you choose:
+
+| Control | Purpose |
+|---|---|
+| Join type | **INNER JOIN**, **LEFT JOIN**, or **RIGHT JOIN** |
+| Table | The table being joined in |
+| ON … = … | Left side: any column from the tables already in the query; right side: a column of the joined table |
+| ✕ | Remove the join |
+
+When you pick a join table, Coruscant checks the schema's foreign-key definitions. If a FK links the new table to any table already in the query, the `ON` condition is filled in automatically and the row shows an **⚡ auto-linked** badge — hover it to see the detected relationship. You can still override either side manually.
+
+**Select fields.** Every table in the query appears with its columns and data types. Tick the columns you want in the output, or use **All** / **None**. If nothing is ticked the query falls back to `SELECT *`.
+
+**Options and preview.** An optional **WHERE** expression, an **ORDER BY** column with ASC/DESC, and a **LIMIT** spinner (on by default, 100). Below them, a **live syntax-highlighted SQL preview** regenerates on every change.
+
+**Example** — `applicant_relationship` joined to `applicant`:
+
+```sql
+SELECT
+    "applicant_relationship"."related_applicant_id",
+    "applicant_relationship"."status",
+    "applicant_relationship"."valid_from",
+    "applicant_relationship"."valid_to"
+FROM "epass_application"."applicant_relationship"
+INNER JOIN "epass_application"."applicant"
+    ON "applicant_relationship"."related_applicant_id" = "applicant"."applicant_id"
+LIMIT 100;
+```
+
+When you are happy with the statement:
+
+- **⧉ Copy SQL** — copies the preview to the clipboard.
+- **▶ Insert into Editor** — inserts the statement at the cursor in the active editor tab and closes the dialog. Like the script generators, the SQL is **never executed automatically** — press **F5** or **Ctrl+Enter** when ready.
 
 ---
 
@@ -1399,6 +1443,24 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 ---
 
 *Author: Marwa Trust Mutemasango*
+
+---
+
+## What's New in 1.0.9
+
+**Version 1.0.9** adds the Visual Query Builder — a point-and-click way to compose SELECT statements with joins.
+
+### New: Visual Query Builder (⚡)
+
+Right-click any schema in the Schema Browser and choose **⚡ Query Builder**:
+
+- **Base table + stackable joins** — add any number of **INNER / LEFT / RIGHT joins**, each with an `ON left = right` condition and one-click removal.
+- **⚡ Auto-linked joins** — foreign keys are parsed from the schema metadata; picking a join table pre-fills the ON clause automatically when a FK relationship exists.
+- **Field selection** — tick output columns per table (with All/None shortcuts); nothing ticked means `SELECT *`.
+- **WHERE / ORDER BY / LIMIT** controls and a **live syntax-highlighted SQL preview** that updates on every change.
+- **⧉ Copy SQL** or **▶ Insert into Editor** — the statement lands at the cursor in the active tab and is never executed automatically.
+
+See [§9.5 Visual Query Builder](#95-visual-query-builder) for the full reference.
 
 ---
 

@@ -87,6 +87,12 @@ _GUIDE_HTML = """
   <li><b>Double-click</b> a table or view → inserts
       <code>SELECT * FROM schema.table LIMIT 100;</code> at the cursor</li>
   <li>Click the <b>▶ SELECT</b> button on a row → same quick-insert</li>
+  <li><b>Right-click</b> a schema → ⚡ <b>Query Builder</b>, 📐 Generate ERD,
+      🗺 Mind Map, 🔍 QA Engine</li>
+  <li>⚡ <b>Query Builder</b> → compose a SELECT visually: base table,
+      INNER / LEFT / RIGHT joins (foreign keys pre-fill the ON clause
+      automatically), per-column field ticks, WHERE / ORDER BY / LIMIT,
+      and a live SQL preview — insert into the editor or copy</li>
   <li><b>Right-click</b> a table → context menu with
       SELECT / UPDATE / DELETE script templates (all columns pre-filled)</li>
   <li><b>Double-click</b> a function → inserts a

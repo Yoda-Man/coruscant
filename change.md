@@ -1,5 +1,44 @@
 # Changelog
 
+### 1.1.1
+
+A maintenance release. Every change here is to the build script, the test
+suite, or the documentation — the application code is identical to 1.1.0, so
+there is no functional reason to upgrade if 1.1.0 already runs for you.
+
+**Fixed — local Windows build failed with "'pyinstaller' is not recognized"**
+`build_windows.bat` invoked the bare `pyinstaller` console shim. On a machine where an
+interrupted `pip install` had left PyInstaller importable but never wrote
+`pyinstaller.exe`, the build aborted at step 3 even though PyInstaller 6.19.0 was
+installed and `Scripts` was on `PATH`. The script now calls `python -m PyInstaller`,
+which does not depend on the shim and runs the build in the same interpreter the
+dependencies were installed into; `pip` is likewise invoked as `python -m pip`. This
+also matches how the macOS and Linux CI jobs already invoke PyInstaller. Verified by a
+clean end-to-end run producing `distribution/dist/Coruscant.exe`.
+
+**Fixed — the v1.1.0 release build failed CI on the first tag push**
+`tests/test_docs.py`, added in 1.1.0, hardcoded the readme path as `Readme.md`. Git
+tracks the file as `README.md` and the Windows working tree holds it as `Readme.md`, so
+the path resolved on a case-insensitive filesystem but raised `FileNotFoundError` on the
+Linux runner, failing four tests and blocking the release. Documentation filenames are
+now resolved case-insensitively within their directory, so neither spelling can break the
+suite on either platform. The fix was validated against a fresh Linux clone before
+re-tagging; no v1.1.0 release or artefact had been published at the point the tag was
+moved.
+
+**Changed — the User Manual no longer carries its own changelog**
+The manual ended with five "What's New in …" sections duplicating this file. They had
+already fallen behind — the newest entry was 1.0.9, with no mention of 1.1.0 — and the
+final section was truncated mid-sentence (`**Version 1.0.4** adds automated sche`). All
+five are removed in favour of a short pointer to `change.md`, which is now the single
+place release notes live. This drops the manual from 1,602 to 1,531 lines and removes
+the truncated text from both the Markdown and the generated HTML.
+
+**Housekeeping**
+- Version bumped to 1.1.1 across `coruscant/__init__.py`, `main.py`, `build_windows.bat`,
+  `distribution/coruscant.spec`, `README.md`, `docs/USER_MANUAL.md`, and the version test.
+- `docs/USER_MANUAL.html` regenerated from the Markdown by `scratch/build_manual_html.py`.
+
 ### 1.1.0
 - **New — Supabase connection preset** — click **Supabase…** in the connection manager, paste a project reference, and pick a region. Coruscant fills in the pooler host, port, `postgres` database, the project-qualified `postgres.<project-ref>` username, and SSL mode `require`. Only the password is left for you to enter. The endpoint dropdown defaults to the session pooler and warns when the transaction pooler is chosen. No new dependencies — the preset is pure form-filling with no network calls.
 - **New — hosted-instance advisories** — the connection form now detects managed PostgreSQL by hostname (Supabase, Neon, Amazon RDS, Azure Database) and shows an advisory panel naming the provider and the features that need superuser rights the tenant role does not have: Recovery Mode promotion, VACUUM FREEZE, and terminate-connections. Selecting a transaction-pooler port replaces it with a stronger warning, because that endpoint reassigns a backend per statement and so breaks query cancellation, transactional DDL with Auto-commit off, and explicit COMMIT/ROLLBACK.

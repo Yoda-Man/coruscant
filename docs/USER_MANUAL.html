@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Coruscant v1.1.0 &mdash; User Manual</title>
+<title>Coruscant v1.1.1 &mdash; User Manual</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -172,7 +172,7 @@
   <div id="brand">
     <div class="name">Coruscant</div>
     <div class="sub">PostgreSQL Multi-Query Tool</div>
-    <span class="ver">v1.1.0 &middot; User Manual</span>
+    <span class="ver">v1.1.1 &middot; User Manual</span>
   </div>
   <div id="filter"><input id="q" type="search" placeholder="Filter sections…" autocomplete="off"></div>
   <nav id="nav">
@@ -297,21 +297,13 @@
 <a class="lvl3" href="#ssl-recommendations">SSL Recommendations</a>
 <a class="lvl3" href="#least-privilege-database-users">Least-Privilege Database Users</a>
 <a class="lvl3" href="#sql-injection">SQL Injection</a>
-<a class="lvl2" href="#whats-new-in-109">What&#x27;s New in 1.0.9</a>
-<a class="lvl3" href="#new-visual-query-builder">New: Visual Query Builder (⚡)</a>
-<a class="lvl2" href="#whats-new-in-108">What&#x27;s New in 1.0.8</a>
-<a class="lvl3" href="#new-live-database-monitor">New: Live Database Monitor (📊)</a>
-<a class="lvl2" href="#whats-new-in-106">What&#x27;s New in 1.0.6</a>
-<a class="lvl3" href="#new-database-doctor">New: Database Doctor (🩺)</a>
-<a class="lvl2" href="#whats-new-in-105">What&#x27;s New in 1.0.5</a>
-<a class="lvl3" href="#new-recovery-mode-detection-and-promotion">New: Recovery Mode Detection and Promotion</a>
-<a class="lvl2" href="#whats-new-in-104">What&#x27;s New in 1.0.4</a>
+<a class="lvl2" href="#release-notes">Release Notes</a>
   </nav>
 </aside>
 
 <main id="content">
 <h1 id="coruscant-user-manual">Coruscant User Manual</h1>
-<p><strong>Version:</strong> 1.1.0
+<p><strong>Version:</strong> 1.1.1
 <strong>Author:</strong> Marwa Trust Mutemasango</p>
 <blockquote class="tip">
 <p><em>Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.</em></p>
@@ -2151,55 +2143,9 @@ for the file location and how to filter it.</p>
 <hr />
 <p><em>Author: Marwa Trust Mutemasango</em></p>
 <hr />
-<h2 id="whats-new-in-109">What's New in 1.0.9</h2>
-<p><strong>Version 1.0.9</strong> adds the Visual Query Builder — a point-and-click way to compose SELECT statements with joins.</p>
-<h3 id="new-visual-query-builder">New: Visual Query Builder (⚡)</h3>
-<p>Right-click any schema in the Schema Browser and choose <strong>⚡ Query Builder</strong>:</p>
-<ul>
-<li><strong>Base table + stackable joins</strong> — add any number of <strong>INNER / LEFT / RIGHT joins</strong>, each with an <code>ON left = right</code> condition and one-click removal.</li>
-<li><strong>⚡ Auto-linked joins</strong> — foreign keys are parsed from the schema metadata; picking a join table pre-fills the ON clause automatically when a FK relationship exists.</li>
-<li><strong>Field selection</strong> — tick output columns per table (with All/None shortcuts); nothing ticked means <code>SELECT *</code>.</li>
-<li><strong>WHERE / ORDER BY / LIMIT</strong> controls and a <strong>live syntax-highlighted SQL preview</strong> that updates on every change.</li>
-<li><strong>⧉ Copy SQL</strong> or <strong>▶ Insert into Editor</strong> — the statement lands at the cursor in the active tab and is never executed automatically.</li>
-</ul>
-<p>See <a href="#96-visual-query-builder">§9.6 Visual Query Builder</a> for the full reference.</p>
-<hr />
-<h2 id="whats-new-in-108">What's New in 1.0.8</h2>
-<p><strong>Version 1.0.8</strong> adds the Live Database Monitor — a real-time observability dashboard to complement the Database Doctor.</p>
-<h3 id="new-live-database-monitor">New: Live Database Monitor (📊)</h3>
-<p>Click the <strong>📊 Dashboard</strong> button in the status bar footer (visible whenever connected) to open a real-time monitoring window that auto-refreshes at a selectable interval (2s / 5s / 10s / 30s / 60s) on a background thread:</p>
-<ul>
-<li><strong>Ten KPI gauges</strong> — database size, connection usage vs <code>max_connections</code>, cache-hit %, transactions/sec, active queries, uptime, row writes/sec, rows read/sec, blocked sessions, and commit ratio. Connection, cache, and lock gauges are colour-coded.</li>
-<li><strong>Four live sparklines</strong> — transactions/sec, connections, cache-hit %, and rows-returned/sec, drawn with a rolling window and min/max/current overlays.</li>
-<li><strong>Ten detail tabs</strong> — Activity, Connections, Tables, Indexes, Cache, Databases, Locks, Replication, Top Queries (<code>pg_stat_statements</code>), and Settings.</li>
-</ul>
-<p>The dialog is non-modal, so you can keep querying while it runs. Per-second rates are computed as deltas between refreshes, with automatic detection of statistics resets to avoid false spikes.</p>
-<p>See <a href="#23-live-database-monitor">§23 Live Database Monitor</a> for the full reference.</p>
-<hr />
-<h2 id="whats-new-in-106">What's New in 1.0.6</h2>
-<p><strong>Version 1.0.6</strong> adds the Database Doctor — a one-stop diagnostic and repair panel for the four most common PostgreSQL operational problems.</p>
-<h3 id="new-database-doctor">New: Database Doctor (🩺)</h3>
-<p>Click the <strong>🩺</strong> button in the status bar footer (visible whenever connected) to open the Database Doctor dialog. Click <strong>🔄 Run Diagnosis</strong> to run four health checks simultaneously:</p>
-<ul>
-<li><strong>Lock Contention</strong> — detects blocked queries; lets you kill the blocking session with one click.</li>
-<li><strong>Table Bloat</strong> — finds tables with excessive dead tuples; provides VACUUM ANALYZE on individual tables or all bloated tables at once.</li>
-<li><strong>Connection Exhaustion</strong> — shows connection usage vs <code>max_connections</code>; lets you terminate idle and idle-in-transaction backends.</li>
-<li><strong>XID Wraparound</strong> — shows transaction ID age as a percentage of the 2-billion limit; lets you run VACUUM FREEZE on the connected database to reset it.</li>
-</ul>
-<p>Each check displays a colour-coded severity card (green / amber / red). All repairs require confirmation and run off the UI thread. The diagnosis re-runs automatically after each repair.</p>
-<p>See <a href="#22-database-doctor">§22 Database Doctor</a> for the full reference.</p>
-<hr />
-<h2 id="whats-new-in-105">What's New in 1.0.5</h2>
-<p><strong>Version 1.0.5</strong> adds one-click database recovery mode detection and repair.</p>
-<h3 id="new-recovery-mode-detection-and-promotion">New: Recovery Mode Detection and Promotion</h3>
-<p>Coruscant now automatically detects when a connected PostgreSQL server is in recovery or standby mode and provides a dedicated dialog to monitor and resolve it.</p>
-<p><strong>Automatic detection</strong> — on every successful connection, Coruscant silently queries <code>pg_is_in_recovery()</code>. If the server is in recovery mode, the status bar immediately shows a warning and the <strong>🔴 Recovery</strong> toolbar button label changes to <strong>🔴 Recovery ⚠</strong>.</p>
-<p><strong>Recovery dialog</strong> — click <strong>🔴 Recovery</strong> to open a live status panel showing WAL receive and replay positions, replication delay (colour-coded by severity), WAL replay paused state, server start time, and PostgreSQL version. The panel auto-refreshes every 10 seconds.</p>
-<p><strong>One-click promote</strong> — click <strong>⚡ Promote to Primary</strong> to convert the standby to a primary server. After a confirmation prompt, Coruscant calls <code>pg_promote()</code> (PostgreSQL 12+) or falls back to <code>pg_wal_replay_resume()</code>, runs the call off the UI thread, and refreshes the dialog to confirm the result.</p>
-<p>See <a href="#21-recovery-mode">§21 Recovery Mode</a> for the full reference.</p>
-<hr />
-<h2 id="whats-new-in-104">What's New in 1.0.4</h2>
-<p><strong>Version 1.0.4</strong> adds automated sche</p>
+<h2 id="release-notes">Release Notes</h2>
+<p>Release notes for this and every previous version are kept in
+<a href="../change.md"><code>change.md</code></a> in the project root.</p>
 </main>
 
 <div id="lb"><img alt=""></div>

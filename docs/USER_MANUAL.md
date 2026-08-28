@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -1525,79 +1525,7 @@ Coruscant uses `cursor.mogrify()` for parameterized queries, which safely escape
 
 ---
 
-## What's New in 1.0.9
+## Release Notes
 
-**Version 1.0.9** adds the Visual Query Builder — a point-and-click way to compose SELECT statements with joins.
-
-### New: Visual Query Builder (⚡)
-
-Right-click any schema in the Schema Browser and choose **⚡ Query Builder**:
-
-- **Base table + stackable joins** — add any number of **INNER / LEFT / RIGHT joins**, each with an `ON left = right` condition and one-click removal.
-- **⚡ Auto-linked joins** — foreign keys are parsed from the schema metadata; picking a join table pre-fills the ON clause automatically when a FK relationship exists.
-- **Field selection** — tick output columns per table (with All/None shortcuts); nothing ticked means `SELECT *`.
-- **WHERE / ORDER BY / LIMIT** controls and a **live syntax-highlighted SQL preview** that updates on every change.
-- **⧉ Copy SQL** or **▶ Insert into Editor** — the statement lands at the cursor in the active tab and is never executed automatically.
-
-See [§9.6 Visual Query Builder](#96-visual-query-builder) for the full reference.
-
----
-
-## What's New in 1.0.8
-
-**Version 1.0.8** adds the Live Database Monitor — a real-time observability dashboard to complement the Database Doctor.
-
-### New: Live Database Monitor (📊)
-
-Click the **📊 Dashboard** button in the status bar footer (visible whenever connected) to open a real-time monitoring window that auto-refreshes at a selectable interval (2s / 5s / 10s / 30s / 60s) on a background thread:
-
-- **Ten KPI gauges** — database size, connection usage vs `max_connections`, cache-hit %, transactions/sec, active queries, uptime, row writes/sec, rows read/sec, blocked sessions, and commit ratio. Connection, cache, and lock gauges are colour-coded.
-- **Four live sparklines** — transactions/sec, connections, cache-hit %, and rows-returned/sec, drawn with a rolling window and min/max/current overlays.
-- **Ten detail tabs** — Activity, Connections, Tables, Indexes, Cache, Databases, Locks, Replication, Top Queries (`pg_stat_statements`), and Settings.
-
-The dialog is non-modal, so you can keep querying while it runs. Per-second rates are computed as deltas between refreshes, with automatic detection of statistics resets to avoid false spikes.
-
-See [§23 Live Database Monitor](#23-live-database-monitor) for the full reference.
-
----
-
-## What's New in 1.0.6
-
-**Version 1.0.6** adds the Database Doctor — a one-stop diagnostic and repair panel for the four most common PostgreSQL operational problems.
-
-### New: Database Doctor (🩺)
-
-Click the **🩺** button in the status bar footer (visible whenever connected) to open the Database Doctor dialog. Click **🔄 Run Diagnosis** to run four health checks simultaneously:
-
-- **Lock Contention** — detects blocked queries; lets you kill the blocking session with one click.
-- **Table Bloat** — finds tables with excessive dead tuples; provides VACUUM ANALYZE on individual tables or all bloated tables at once.
-- **Connection Exhaustion** — shows connection usage vs `max_connections`; lets you terminate idle and idle-in-transaction backends.
-- **XID Wraparound** — shows transaction ID age as a percentage of the 2-billion limit; lets you run VACUUM FREEZE on the connected database to reset it.
-
-Each check displays a colour-coded severity card (green / amber / red). All repairs require confirmation and run off the UI thread. The diagnosis re-runs automatically after each repair.
-
-See [§22 Database Doctor](#22-database-doctor) for the full reference.
-
----
-
-## What's New in 1.0.5
-
-**Version 1.0.5** adds one-click database recovery mode detection and repair.
-
-### New: Recovery Mode Detection and Promotion
-
-Coruscant now automatically detects when a connected PostgreSQL server is in recovery or standby mode and provides a dedicated dialog to monitor and resolve it.
-
-**Automatic detection** — on every successful connection, Coruscant silently queries `pg_is_in_recovery()`. If the server is in recovery mode, the status bar immediately shows a warning and the **🔴 Recovery** toolbar button label changes to **🔴 Recovery ⚠**.
-
-**Recovery dialog** — click **🔴 Recovery** to open a live status panel showing WAL receive and replay positions, replication delay (colour-coded by severity), WAL replay paused state, server start time, and PostgreSQL version. The panel auto-refreshes every 10 seconds.
-
-**One-click promote** — click **⚡ Promote to Primary** to convert the standby to a primary server. After a confirmation prompt, Coruscant calls `pg_promote()` (PostgreSQL 12+) or falls back to `pg_wal_replay_resume()`, runs the call off the UI thread, and refreshes the dialog to confirm the result.
-
-See [§21 Recovery Mode](#21-recovery-mode) for the full reference.
-
----
-
-## What's New in 1.0.4
-
-**Version 1.0.4** adds automated sche
+Release notes for this and every previous version are kept in
+[`change.md`](../change.md) in the project root.

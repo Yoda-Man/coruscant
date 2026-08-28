@@ -17,13 +17,15 @@ if exist distribution\dist   rmdir /s /q distribution\dist
 :: Install / upgrade dependencies
 echo.
 echo [2/4] Installing dependencies...
-pip install -r requirements.txt --quiet
+:: "python -m pip" rather than the pip shim, so dependencies always land in the
+:: same interpreter that runs the build below.
+python -m pip install -r requirements.txt --quiet
 if errorlevel 1 (
     echo ERROR: pip install failed.
     pause
     exit /b 1
 )
-pip install pyinstaller --quiet
+python -m pip install pyinstaller --quiet
 if errorlevel 1 (
     echo ERROR: PyInstaller install failed.
     pause
@@ -33,7 +35,11 @@ if errorlevel 1 (
 :: Run PyInstaller
 echo.
 echo [3/4] Building executable...
-pyinstaller distribution\coruscant.spec ^
+:: Invoked as a module, not via the pyinstaller.exe console shim: an
+:: interrupted pip install can leave the package importable but the shim
+:: missing, which fails with "'pyinstaller' is not recognized". This also
+:: matches how the macOS and Linux CI jobs invoke it.
+python -m PyInstaller distribution\coruscant.spec ^
     --distpath distribution\dist ^
     --workpath distribution\.build ^
     --noconfirm

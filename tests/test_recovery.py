@@ -349,6 +349,49 @@ class TestDoctorStructure:
         for c in ("LOCKS_SQL", "BLOAT_SQL", "CONN_SUMMARY_SQL", "WRAPAROUND_SQL"):
             assert c in src, f"core/doctor.py missing {c}"
 
+    def test_bloat_sql_uses_real_pg_stat_user_tables_columns(self):
+        """
+        BLOAT_SQL must only reference columns that pg_stat_user_tables actually
+        has.  It shipped selecting `tablename`, which belongs to pg_tables — the
+        statistics view calls it `relname` — so the Table Bloat health check
+        raised 'column "tablename" does not exist' on every run and the card
+        always rendered as an error.  `test_sql_constants_present` did not catch
+        it because the constant existed; only its contents were wrong.
+        """
+        import re
+        from coruscant.core.doctor import BLOAT_SQL
+
+        # Columns of pg_stat_user_tables, stable across supported PostgreSQL
+        # versions (PG 12+).  Anything outside this set is a typo or a column
+        # borrowed from a different catalog view.
+        valid = {
+            "relid", "schemaname", "relname",
+            "seq_scan", "seq_tup_read", "idx_scan", "idx_tup_fetch",
+            "n_tup_ins", "n_tup_upd", "n_tup_del", "n_tup_hot_upd",
+            "n_live_tup", "n_dead_tup", "n_mod_since_analyze",
+            "n_ins_since_vacuum",
+            "last_vacuum", "last_autovacuum", "last_analyze", "last_autoanalyze",
+            "vacuum_count", "autovacuum_count", "analyze_count", "autoanalyze_count",
+        }
+        # SQL keywords, functions, and output aliases that are not source columns.
+        ignore = {
+            "select", "from", "where", "order", "by", "limit", "case", "when",
+            "then", "else", "end", "and", "or", "as", "desc", "asc", "round",
+            "coalesce", "greatest", "text", "never", "null",
+            "schema", "table", "dead_tuples", "live_tuples", "dead_pct",
+            "last_vacuum", "pg_stat_user_tables",
+        }
+        assert "pg_stat_user_tables" in BLOAT_SQL
+        idents = {w.lower() for w in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", BLOAT_SQL)}
+        unknown = sorted(idents - valid - ignore)
+        assert not unknown, (
+            "BLOAT_SQL references identifiers that are not columns of "
+            f"pg_stat_user_tables: {unknown}"
+        )
+        assert "tablename" not in BLOAT_SQL, (
+            "pg_stat_user_tables has no 'tablename' column — use 'relname'"
+        )
+
 
 # ===========================================================================
 # 6. DatabaseManager repair methods

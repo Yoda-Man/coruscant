@@ -36,11 +36,16 @@ from PySide6.QtWidgets import (
 
 from coruscant.core.connections import (
     SSL_MODES,
+    SUPABASE_DEFAULT_REGION,
+    SUPABASE_SESSION_PORT,
     SavedConnection,
     deserialise_connections,
+    is_transaction_pooler,
+    managed_provider,
     merge_connections,
     parse_pgadmin_export_text,
     serialise_connections,
+    supabase_profile,
 )
 from coruscant.ui.dialogs.message import StyledMessageBox
 
@@ -331,6 +336,13 @@ class ConnectionDialog(QDialog):
         self._new_btn.clicked.connect(self._on_new)
         actions.addWidget(self._new_btn)
 
+        self._supabase_btn = QPushButton("Supabase…")
+        self._supabase_btn.setToolTip(
+            "Fill the form from a Supabase project reference"
+        )
+        self._supabase_btn.clicked.connect(self._on_supabase_preset)
+        actions.addWidget(self._supabase_btn)
+
         self._delete_btn = QPushButton("Delete")
         self._delete_btn.clicked.connect(self._on_delete)
         actions.addWidget(self._delete_btn)
@@ -417,6 +429,14 @@ class ConnectionDialog(QDialog):
         form.addRow("Password:", pw_row)
         form.addRow("SSL mode:", self._ssl_mode)
         layout.addWidget(box)
+
+        # Hosted-PostgreSQL advisory — updated whenever host or port changes.
+        self._hosted_note = QLabel()
+        self._hosted_note.setWordWrap(True)
+        self._hosted_note.setVisible(False)
+        layout.addWidget(self._hosted_note)
+        self._host.textChanged.connect(self._refresh_hosted_note)
+        self._port.valueChanged.connect(self._refresh_hosted_note)
 
         btns = QHBoxLayout()
         self._test_btn = QPushButton("Test Connection")
@@ -640,6 +660,63 @@ class ConnectionDialog(QDialog):
         self._clear_form()
         self._name.setFocus()
 
+    def _on_supabase_preset(self) -> None:
+        """Fill the form from a Supabase project reference."""
+        dlg = SupabasePresetDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            conn = supabase_profile(
+                project_ref=dlg.project_ref(),
+                region=dlg.region(),
+                pooler=dlg.pooler(),
+            )
+        except ValueError as exc:
+            StyledMessageBox.warning(self, "Supabase Preset", str(exc))
+            return
+
+        self._table.clearSelection()
+        self._populate_form(conn)
+        self._password.setFocus()
+
+    def _refresh_hosted_note(self) -> None:
+        """Show provider and pooler advisories for the host/port in the form."""
+        host = self._host.text().strip()
+        port = self._port.value()
+        provider = managed_provider(host)
+
+        if is_transaction_pooler(host, port):
+            self._hosted_note.setText(
+                f"⚠  Port {port} is the {provider or 'provider'} transaction pooler. "
+                "It reassigns a backend per statement, so cancelling a query, "
+                "transactional DDL with Auto-commit off, and explicit COMMIT/ROLLBACK "
+                "cannot be relied on. Use the session pooler (port "
+                f"{SUPABASE_SESSION_PORT}) or a direct connection instead."
+            )
+            self._hosted_note.setStyleSheet(
+                "color: #f9e2af; background: #2a2416; border: 1px solid #6d5a1f;"
+                " border-radius: 6px; padding: 8px;"
+            )
+            self._hosted_note.setVisible(True)
+            return
+
+        if provider:
+            self._hosted_note.setText(
+                f"ℹ  {provider} is managed PostgreSQL. Recovery Mode promotion and the "
+                "privileged Doctor repairs (VACUUM FREEZE, terminate connections) need "
+                "superuser rights the tenant role does not have. Everything else, "
+                "including the Live Monitor and the read-only Doctor checks, works normally."
+            )
+            self._hosted_note.setStyleSheet(
+                "color: #aeb6d8; background: #1c2233; border: 1px solid #313a52;"
+                " border-radius: 6px; padding: 8px;"
+            )
+            self._hosted_note.setVisible(True)
+            return
+
+        self._hosted_note.clear()
+        self._hosted_note.setVisible(False)
+
     def _on_delete(self) -> None:
         index = self._selected_index()
         if index is None:
@@ -730,3 +807,95 @@ class ConnectionDialog(QDialog):
 
     def get_params(self) -> dict:
         return self.get_profile().connect_params()
+
+
+class SupabasePresetDialog(QDialog):
+    """
+    Collects a Supabase project reference and region, then hands the values to
+    ``supabase_profile()``.  Purely a form — no network calls.
+    """
+
+    _REGIONS = [
+        "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+        "eu-west-1", "eu-west-2", "eu-west-3", "eu-central-1", "eu-north-1",
+        "ap-south-1", "ap-southeast-1", "ap-southeast-2",
+        "ap-northeast-1", "ap-northeast-2",
+        "ca-central-1", "sa-east-1",
+    ]
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Supabase Connection")
+        self.setMinimumWidth(460)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        intro = QLabel(
+            "Copy the project reference and region from your Supabase dashboard "
+            "under <b>Project → Connect</b>. The database password is not stored "
+            "here — enter it in the connection form afterwards."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet("color: #aeb6d8;")
+        layout.addWidget(intro)
+
+        form = QFormLayout()
+        form.setVerticalSpacing(10)
+        form.setHorizontalSpacing(12)
+
+        self._ref = QLineEdit()
+        self._ref.setPlaceholderText("e.g. abcdefghijklmnopqrst")
+        form.addRow("Project ref:", self._ref)
+
+        self._region = QComboBox()
+        self._region.setEditable(True)
+        self._region.addItems(self._REGIONS)
+        self._region.setCurrentText(SUPABASE_DEFAULT_REGION)
+        form.addRow("Region:", self._region)
+
+        self._pooler = QComboBox()
+        self._pooler.addItem("Session pooler — recommended", "session")
+        self._pooler.addItem("Transaction pooler — limited", "transaction")
+        form.addRow("Endpoint:", self._pooler)
+        layout.addLayout(form)
+
+        self._warning = QLabel()
+        self._warning.setWordWrap(True)
+        self._warning.setVisible(False)
+        self._warning.setStyleSheet(
+            "color: #f9e2af; background: #2a2416; border: 1px solid #6d5a1f;"
+            " border-radius: 6px; padding: 8px;"
+        )
+        layout.addWidget(self._warning)
+        self._pooler.currentIndexChanged.connect(self._refresh_warning)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._ref.setFocus()
+
+    def _refresh_warning(self) -> None:
+        if self.pooler() == "transaction":
+            self._warning.setText(
+                "⚠  The transaction pooler reassigns a backend per statement. "
+                "Cancelling a query, transactional DDL with Auto-commit off, and "
+                "explicit COMMIT/ROLLBACK cannot be relied on. Prefer the session pooler."
+            )
+            self._warning.setVisible(True)
+        else:
+            self._warning.setVisible(False)
+
+    def project_ref(self) -> str:
+        return self._ref.text().strip()
+
+    def region(self) -> str:
+        return self._region.currentText().strip()
+
+    def pooler(self) -> str:
+        return self._pooler.currentData() or "session"

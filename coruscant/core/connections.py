@@ -14,6 +14,93 @@ from typing import Any
 
 SSL_MODES = ["prefer", "disable", "allow", "require", "verify-ca", "verify-full"]
 
+# Supabase pooler endpoints.  The session pooler keeps one backend per client
+# connection; the transaction pooler reassigns a backend per statement, which
+# breaks query cancellation, transactional DDL, and explicit COMMIT/ROLLBACK.
+SUPABASE_POOLER_HOST = "aws-0-{region}.pooler.supabase.com"
+SUPABASE_SESSION_PORT = 5432
+SUPABASE_TRANSACTION_PORT = 6543
+SUPABASE_DEFAULT_REGION = "eu-central-1"
+
+# Host suffixes that identify a managed provider.  Used only to warn the user
+# which features need superuser rights they will not have.
+_MANAGED_SUFFIXES = (
+    (".supabase.co", "Supabase"),
+    (".supabase.com", "Supabase"),
+    (".neon.tech", "Neon"),
+    (".rds.amazonaws.com", "Amazon RDS"),
+    (".postgres.database.azure.com", "Azure Database for PostgreSQL"),
+)
+
+# Features that need privileges a managed tenant role does not hold.
+MANAGED_UNAVAILABLE = (
+    "Recovery Mode promotion (pg_promote)",
+    "Doctor: VACUUM FREEZE",
+    "Doctor: Kill Blocker / Terminate Idle",
+)
+
+# Features that need a backend session that survives across statements.
+SESSION_SCOPED_FEATURES = (
+    "Cancelling a running query",
+    "Transactional DDL with Auto-commit off",
+    "Explicit COMMIT and ROLLBACK",
+)
+
+
+def managed_provider(host: str) -> str | None:
+    """Return the managed-Postgres provider for *host*, or None if self-hosted."""
+    name = (host or "").strip().lower()
+    for suffix, provider in _MANAGED_SUFFIXES:
+        if name.endswith(suffix):
+            return provider
+    return None
+
+
+def is_transaction_pooler(host: str, port: Any) -> bool:
+    """
+    True when host/port look like a transaction pooler.
+
+    Only Supabase publishes a well-known transaction-pooler port, so this
+    recognises that case rather than guessing at other providers.
+    """
+    name = (host or "").strip().lower()
+    if "pooler.supabase.com" not in name:
+        return False
+    return _safe_int(port, 0) == SUPABASE_TRANSACTION_PORT
+
+
+def supabase_profile(
+    project_ref: str,
+    region: str = SUPABASE_DEFAULT_REGION,
+    pooler: str = "session",
+    name: str = "",
+) -> SavedConnection:
+    """
+    Build a Supabase pooler connection profile from a project reference.
+
+    Mirrors the values Supabase shows under Project -> Connect.  Raises
+    ValueError when *project_ref* or *region* is blank.
+    """
+    ref = (project_ref or "").strip()
+    if not ref:
+        raise ValueError("Project reference is required.")
+    reg = (region or "").strip()
+    if not reg:
+        raise ValueError("Region is required.")
+
+    port = SUPABASE_TRANSACTION_PORT if pooler == "transaction" else SUPABASE_SESSION_PORT
+    return SavedConnection(
+        name=name.strip() or f"Supabase {ref}",
+        host=SUPABASE_POOLER_HOST.format(region=reg),
+        port=port,
+        database="postgres",
+        user=f"postgres.{ref}",
+        password="",
+        ssl_mode="require",
+        group="Supabase",
+        source="supabase",
+    )
+
 
 @dataclass
 class SavedConnection:

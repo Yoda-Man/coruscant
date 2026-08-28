@@ -494,3 +494,98 @@ class TestParsePageadminExport:
         conns = parse_pgadmin_export_text(raw)
         assert len(conns) == 1
         assert conns[0].host == "host"
+
+
+class TestSupabaseProfile:
+    """Supabase pooler preset and managed-provider detection."""
+
+    def test_session_pooler_defaults(self):
+        import pytest
+        from coruscant.core.connections import supabase_profile
+
+        conn = supabase_profile("abcdefghijklm", "eu-west-2")
+        assert conn.host == "aws-0-eu-west-2.pooler.supabase.com"
+        assert conn.port == 5432
+        assert conn.user == "postgres.abcdefghijklm"
+        assert conn.database == "postgres"
+        assert conn.ssl_mode == "require"
+        assert conn.password == ""
+        assert conn.source == "supabase"
+
+    def test_transaction_pooler_uses_6543(self):
+        from coruscant.core.connections import supabase_profile
+
+        assert supabase_profile("ref", "us-east-1", pooler="transaction").port == 6543
+
+    def test_project_ref_is_trimmed_and_required(self):
+        import pytest
+        from coruscant.core.connections import supabase_profile
+
+        assert supabase_profile("  ref  ", "us-east-1").user == "postgres.ref"
+        with pytest.raises(ValueError):
+            supabase_profile("   ", "us-east-1")
+        with pytest.raises(ValueError):
+            supabase_profile("ref", "  ")
+
+    def test_custom_name_overrides_default(self):
+        from coruscant.core.connections import supabase_profile
+
+        assert supabase_profile("ref", "us-east-1").name == "Supabase ref"
+        assert supabase_profile("ref", "us-east-1", name="Prod").name == "Prod"
+
+    def test_profile_round_trips_through_serialisation(self):
+        from coruscant.core.connections import (
+            deserialise_connections,
+            serialise_connections,
+            supabase_profile,
+        )
+
+        original = supabase_profile("ref", "eu-west-2")
+        restored = deserialise_connections(serialise_connections([original]))[0]
+        assert restored.to_dict() == original.to_dict()
+
+
+class TestManagedProviderDetection:
+    def test_recognises_known_providers(self):
+        from coruscant.core.connections import managed_provider
+
+        assert managed_provider("aws-0-eu-west-2.pooler.supabase.com") == "Supabase"
+        assert managed_provider("db.abcdef.supabase.co") == "Supabase"
+        assert managed_provider("ep-cool-name-123.eu-central-1.aws.neon.tech") == "Neon"
+        assert managed_provider("mydb.abc123.eu-west-1.rds.amazonaws.com") == "Amazon RDS"
+        assert managed_provider("srv.postgres.database.azure.com").startswith("Azure")
+
+    def test_self_hosted_returns_none(self):
+        from coruscant.core.connections import managed_provider
+
+        assert managed_provider("localhost") is None
+        assert managed_provider("10.0.0.5") is None
+        assert managed_provider("") is None
+
+    def test_detection_is_case_insensitive_and_trimmed(self):
+        from coruscant.core.connections import managed_provider
+
+        assert managed_provider("  DB.ABC.SUPABASE.CO  ") == "Supabase"
+
+    def test_suffix_match_is_not_a_substring_match(self):
+        """A lookalike host must not be reported as managed."""
+        from coruscant.core.connections import managed_provider
+
+        assert managed_provider("supabase.co.internal.lan") is None
+        assert managed_provider("not-neon.tech.example.com") is None
+
+
+class TestTransactionPoolerDetection:
+    def test_supabase_transaction_port_detected(self):
+        from coruscant.core.connections import is_transaction_pooler
+
+        assert is_transaction_pooler("aws-0-eu-west-2.pooler.supabase.com", 6543) is True
+        assert is_transaction_pooler("aws-0-eu-west-2.pooler.supabase.com", "6543") is True
+
+    def test_session_port_and_other_hosts_are_not_flagged(self):
+        from coruscant.core.connections import is_transaction_pooler
+
+        assert is_transaction_pooler("aws-0-eu-west-2.pooler.supabase.com", 5432) is False
+        assert is_transaction_pooler("db.abc.supabase.co", 6543) is False
+        assert is_transaction_pooler("localhost", 6543) is False
+        assert is_transaction_pooler("", None) is False

@@ -30,7 +30,9 @@ class TestLogDir:
         with patch.object(sys, "platform", "linux"), \
              patch.dict(os.environ, {"XDG_DATA_HOME": "/custom/data"}, clear=False):
             p = fn()
-        assert str(p).startswith("/custom/data")
+        # as_posix() so the assertion holds when the test itself runs on Windows,
+        # where pathlib still yields a WindowsPath despite the patched platform.
+        assert p.as_posix().startswith("/custom/data")
         assert "Coruscant" in str(p)
 
     def test_linux_falls_back_to_home(self):

@@ -56,7 +56,7 @@ def assess_locks(rows: list[tuple]) -> tuple[str, str]:
 BLOAT_SQL = """
 SELECT
     schemaname                                               AS schema,
-    tablename                                                AS table,
+    relname                                                  AS table,
     n_dead_tup                                               AS dead_tuples,
     n_live_tup                                               AS live_tuples,
     CASE WHEN n_live_tup + n_dead_tup > 0

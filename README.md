@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.0.9  
+**Version:** 1.1.0  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -24,7 +24,7 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Clean layered architecture:** `core/` has zero GUI imports. The SQL parser, database manager, and background worker can all be tested without a running Qt application. `MainWindow` is a pure coordinator it wires signals but contains no SQL logic.
 
-**Background execution with real cancellation:** queries run in a `QThread` worker; the UI never freezes. Cancel sends `pg_cancel_backend()` to PostgreSQL the *server* stops the query, not just the client.
+**Background execution with real cancellation:** queries run in a `QThread` worker; the UI never freezes. Cancel issues a PostgreSQL cancel request over the libpq protocol the *server* stops the query, not just the client.
 
 **Responsive startup:** packaged builds show a branded splash screen the instant the executable launches rendered by the bootloader before Python even starts so there is no blank-desktop wait. The Script Manager's knowledge graph is pre-loaded in the background at startup, so the dialog opens instantly with no UI freeze.
 
@@ -208,6 +208,26 @@ Click **Connections** to open the connection manager. Import a pgAdmin JSON expo
 
 Passwords are base64-encoded in the OS settings store. Not encrypted treat the store as sensitive.
 
+### Hosted PostgreSQL (Supabase, Neon, RDS, Azure)
+
+Managed PostgreSQL services are ordinary PostgreSQL servers, so they need no special mode in Coruscant. Create a profile in the connection manager as usual and set **SSL Mode** to `require` most hosted providers reject unencrypted connections.
+
+Take the host, port, database, and username from the provider's own connect panel rather than guessing; the formats differ between providers and change over time. On Supabase they are under **Project → Connect**, where the username is project-qualified (`postgres.<project-ref>`) whenever you use a pooler endpoint.
+
+**Supabase preset.** Click **Supabase…** in the connection manager, paste your project reference, pick the region, and the host, port, database, username, and SSL mode are filled in for you. Only the password is left blank. The endpoint dropdown defaults to the session pooler and warns you if you pick the transaction pooler.
+
+When a profile points at a recognised managed provider, the connection form shows an advisory panel below the fields naming the provider and the features that will not be available. Selecting a transaction-pooler port replaces it with a stronger warning.
+
+**Pick a session-capable endpoint.** Where a provider offers both a *session* pooler and a *transaction* pooler, choose the session pooler or the direct connection. Coruscant depends on a stable backend session for three things:
+
+- **Cancelling a running query**, which sends a cancel request keyed to the backend assigned when the connection opened
+- **Transactional DDL** with Auto-commit switched off
+- **Explicit COMMIT and ROLLBACK**
+
+A transaction pooler hands out a different backend per statement, so none of those can be relied on. On Supabase the transaction pooler is the port `6543` endpoint; the session pooler and direct connection both keep the session intact.
+
+Two features are unavailable on managed instances because the tenant role is not a superuser: [Recovery Mode](#recovery-mode) and the privileged [Doctor repairs](#one-click-repairs). Everything else including the full Live Database Monitor and the read-only Doctor health checks works normally.
+
 ## The Editor
 
 Each editor tab contains a **syntax-highlighted SQL editor** with:
@@ -275,7 +295,7 @@ public (schema)
 - **Right-click a schema** → **⚡ Query Builder**, **Generate ERD**, **🗺 Mind Map**, **🔍 QA Engine**  
 - **Right-click a table** → SELECT / UPDATE / DELETE script templates, **🗺 Mind Map from here**  
 - **⚙ Settings** → toggle Auto-complete, Line numbers, Cell-viewer auto-close, **Run QA Engine on connect**  
-- **? Guide** → opens the full in-app quick-reference guide
+- **📖 Guide** → opens the full in-app quick-reference guide
 
 ## QA Engine
 
@@ -430,6 +450,8 @@ PostgreSQL servers running as standbys, or servers that crashed and are replayin
 
 Coruscant detects this automatically and provides a one-click path to resolution.
 
+> **Self-managed servers only.** Managed providers such as Supabase, Neon, RDS, and Azure run their own replication and failover, and their tenant role is not a superuser, so `pg_promote()` is unavailable there. Detection still reports the recovery state correctly; promotion is the part that will not work.
+
 ### Automatic detection on connect
 
 Every time you connect, Coruscant silently calls `pg_is_in_recovery()`. If the server is in recovery mode:
@@ -496,6 +518,8 @@ Each card exposes targeted repair buttons — all require a confirmation prompt 
 
 > **Note:** VACUUM FREEZE operates on the currently connected database only. If the most critical database in the wraparound list is a different database, reconnect to it first.
 
+> **Managed PostgreSQL:** the repairs above need privileges a hosted tenant role usually lacks database-wide `VACUUM FREEZE` requires ownership of the tables it touches, and terminating another role's backend requires superuser rights. Expect permission errors on Supabase, Neon, RDS, and Azure. The four health checks are read-only and work normally.
+
 All repair operations run in a background thread. The diagnosis re-runs automatically after each repair so you see the updated state immediately.
 
 ## Live Database Monitor
@@ -526,6 +550,8 @@ All SQL and rate math live in the GUI-free `coruscant/core/metrics.py`; the UI i
 | Single connection | All editor tabs share one PostgreSQL connection |
 | No `.pgpass` support | Connection parameters must be entered manually |
 | Script Manager graph | Built with NetworkX; requires `pip install networkx>=2.6` |
+| Transaction poolers | Query cancel, transactional DDL, and explicit COMMIT/ROLLBACK need a stable backend session use a session pooler or direct connection |
+| Managed PostgreSQL | Recovery Mode promotion and the privileged Doctor repairs need superuser rights the tenant role does not have |
 
 > **Not a limitation:** passwords containing `$`, `@`, `%`, or any other special character. Coruscant handles these correctly by design.
 

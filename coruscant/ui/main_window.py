@@ -127,6 +127,9 @@ class MainWindow(QMainWindow):
 
     def _build_toolbar(self) -> None:
         tb = QToolBar("Main", self)
+        # QMainWindow.saveState() skips any toolbar or dock without an
+        # objectName and warns; the layout then never restores.
+        tb.setObjectName("MainToolBar")
         tb.setMovable(False)
         tb.setIconSize(QSize(16, 16))
         tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -395,6 +398,8 @@ class MainWindow(QMainWindow):
 
     def _build_left_dock(self) -> None:
         dock = QDockWidget("Database Explorer", self)
+        # Required by QMainWindow.saveState() — see _build_toolbar.
+        dock.setObjectName("DatabaseExplorerDock")
         dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea)
         dock.setFeatures(
             QDockWidget.DockWidgetFeature.DockWidgetMovable |

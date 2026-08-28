@@ -425,7 +425,9 @@ class TestConnectionDialogHelpers:
             sys.modules.setdefault(name, mod)
 
         # Direct import from source via exec
-        src = (_ROOT / "coruscant" / "ui" / "dialogs" / "connection.py").read_text()
+        # encoding is explicit: the file contains non-ASCII glyphs (👁) that the
+        # Windows default codepage cannot decode.
+        src = (_ROOT / "coruscant" / "ui" / "dialogs" / "connection.py").read_text(encoding="utf-8")
         # Extract only the two small helper functions we want to test
         # by running them in isolation
         ns = {"base64": base64}
@@ -665,3 +667,134 @@ class TestDialogClasses:
         for method in ("_on_find_scripts", "_on_suppress",
                        "_on_manage_suppressions", "_on_export_csv"):
             assert method in defined, f"qa_dialog.py missing {method}"
+
+
+class TestDialogConstantsAreBound:
+    """
+    Every ALL_CAPS constant referenced in a dialog module must actually be
+    bound in that module — imported, assigned, or a class attribute.
+
+    Regression guard: SUPABASE_SESSION_PORT was used in connection.py's
+    hosted-instance warning but never imported, so the transaction-pooler
+    warning raised NameError at runtime. AST parsing alone does not catch
+    this, and CI has no PySide6 to catch it by import.
+    """
+
+    _MODULES = [
+        "coruscant/ui/dialogs/connection.py",
+        "coruscant/ui/dialogs/doctor.py",
+        "coruscant/ui/dialogs/recovery.py",
+        "coruscant/ui/dialogs/dashboard.py",
+        "coruscant/ui/dialogs/query_builder.py",
+    ]
+
+    @staticmethod
+    def _bound_names(tree: ast.Module) -> set[str]:
+        """Names bound anywhere in the module: imports, assignments, defs."""
+        bound: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    bound.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    bound.add(alias.asname or alias.name)
+            elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                bound.add(node.id)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                bound.add(node.name)
+            elif isinstance(node, ast.arg):
+                bound.add(node.arg)
+            elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store):
+                # e.g. cls.CONSTANT = ... — record the attribute name too
+                bound.add(node.attr)
+        return bound
+
+    @pytest.mark.parametrize("rel", _MODULES)
+    def test_all_caps_constants_are_bound(self, rel):
+        path = _ROOT / rel
+        if not path.exists():
+            pytest.skip(f"{rel} not present")
+
+        tree = _ast(rel)
+        bound = self._bound_names(tree)
+        builtins_ns = set(dir(__builtins__)) if isinstance(__builtins__, dict) is False else set(__builtins__)
+
+        used: dict[str, int] = {}
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)):
+                continue
+            name = node.id
+            # Constants only: ALL_CAPS, at least two chars, not dunder.
+            if len(name) < 2 or not name.isupper():
+                continue
+            if name in bound or name in builtins_ns:
+                continue
+            used.setdefault(name, node.lineno)
+
+        if used:
+            detail = "\n".join(f"  line {ln}: {n}" for n, ln in sorted(used.items(), key=lambda x: x[1]))
+            raise AssertionError(
+                f"{rel}: constant(s) used but never imported or defined:\n{detail}"
+            )
+
+
+class TestSaveStateWidgetsHaveObjectNames:
+    """
+    Every QToolBar and QDockWidget added to a QMainWindow must be given an
+    objectName.
+
+    QMainWindow.saveState() serialises dock and toolbar geometry by objectName.
+    A widget without one is silently skipped and Qt logs
+    "QMainWindow::saveState(): 'objectName' not set for ...", so the user's
+    layout is never restored between sessions.  Both the Main toolbar and the
+    Database Explorer dock shipped without one.
+
+    Structural, not behavioural: CI has no PySide6, so this walks the AST.
+    """
+
+    _MODULES = ["coruscant/ui/main_window.py"]
+    _NEEDS_NAME = {"QToolBar", "QDockWidget"}
+
+    @pytest.mark.parametrize("rel", _MODULES)
+    def test_toolbars_and_docks_set_objectname(self, rel):
+        tree = _ast(rel)
+
+        # Local variables assigned a QToolBar(...) / QDockWidget(...) call.
+        created: dict[str, int] = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                continue
+            fn = node.value.func
+            cls = fn.id if isinstance(fn, ast.Name) else getattr(fn, "attr", None)
+            if cls not in self._NEEDS_NAME:
+                continue
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name):
+                    created[tgt.id] = node.lineno
+                elif isinstance(tgt, ast.Attribute):
+                    created[tgt.attr] = node.lineno
+
+        # Variables that later receive .setObjectName(...)
+        named: set[str] = set()
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "setObjectName"):
+                continue
+            recv = node.func.value
+            if isinstance(recv, ast.Name):
+                named.add(recv.id)
+            elif isinstance(recv, ast.Attribute):
+                named.add(recv.attr)
+
+        missing = {v: ln for v, ln in created.items() if v not in named}
+        assert created, f"{rel}: found no QToolBar/QDockWidget to check"
+        if missing:
+            detail = "\n".join(f"  line {ln}: {v}" for v, ln in
+                               sorted(missing.items(), key=lambda kv: kv[1]))
+            raise AssertionError(
+                f"{rel}: QToolBar/QDockWidget without setObjectName() — "
+                f"QMainWindow.saveState() will skip these and the layout will "
+                f"not persist:\n{detail}"
+            )

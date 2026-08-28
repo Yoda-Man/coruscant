@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.0.9
+**Version:** 1.1.0
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -23,6 +23,7 @@
    - 4.5 [Recent Connections](#45-recent-connections)
    - 4.6 [Disconnecting](#46-disconnecting)
    - 4.7 [Auto-reconnect](#47-auto-reconnect)
+   - 4.8 [Connecting to Hosted PostgreSQL](#48-connecting-to-hosted-postgresql)
 5. [Writing SQL](#5-writing-sql)
    - 5.1 [The SQL Editor](#51-the-sql-editor)
    - 5.2 [Multiple Editor Tabs](#52-multiple-editor-tabs)
@@ -42,7 +43,8 @@
    - 7.4 [Copying Rows to the Clipboard](#74-copying-rows-to-the-clipboard)
    - 7.5 [Pinning and Renaming Result Tabs](#75-pinning-and-renaming-result-tabs)
    - 7.6 [NULL Values](#76-null-values)
-   - 7.7 [Exporting Results](#77-exporting-results)
+   - 7.7 [Viewing a Single Cell](#77-viewing-a-single-cell)
+   - 7.8 [Exporting Results](#78-exporting-results)
 8. [Transaction Mode](#8-transaction-mode)
    - 8.1 [Auto-commit (Default)](#81-auto-commit-default)
    - 8.2 [Manual Transaction Mode](#82-manual-transaction-mode)
@@ -50,10 +52,11 @@
    - 8.4 [Rolling Back](#84-rolling-back)
 9. [Schema Browser](#9-schema-browser)
    - 9.1 [Navigating the Tree](#91-navigating-the-tree)
-   - 9.2 [Generating Scripts from a Table](#92-generating-scripts-from-a-table)
+   - 9.2 [Generating Scripts from a Table or Schema](#92-generating-scripts-from-a-table-or-schema)
    - 9.3 [Inserting a SELECT Statement](#93-inserting-a-select-statement)
    - 9.4 [Refreshing the Schema](#94-refreshing-the-schema)
-   - 9.5 [Visual Query Builder](#95-visual-query-builder)
+   - 9.5 [The Schema Browser Toolbar](#95-the-schema-browser-toolbar)
+   - 9.6 [Visual Query Builder](#96-visual-query-builder)
 10. [QA Engine](#10-qa-engine)
     - 10.1 [Running the QA Engine](#101-running-the-qa-engine)
     - 10.2 [Understanding the Results](#102-understanding-the-results)
@@ -65,23 +68,28 @@
     - 11.1 [Schema Mind Map](#111-schema-mind-map)
     - 11.2 [Mind Map from a Table](#112-mind-map-from-a-table)
     - 11.3 [Navigating the Map](#113-navigating-the-map)
-14. [Query History](#14-query-history)
-15. [Parameterized Queries](#15-parameterized-queries)
-16. [EXPLAIN and Query Plans](#16-explain-and-query-plans)
-17. [Themes](#17-themes)
-18. [Logging](#18-logging)
-19. [Support Script Manager](#19-support-script-manager)
-20. [Keyboard Shortcuts Reference](#20-keyboard-shortcuts-reference)
-21. [Troubleshooting](#21-troubleshooting)
-22. [Recovery Mode](#22-recovery-mode)
-    - 22.1 [What Recovery Mode Means](#221-what-recovery-mode-means)
-    - 22.2 [Automatic Detection on Connect](#222-automatic-detection-on-connect)
-    - 22.3 [The Recovery Dialog](#223-the-recovery-dialog)
-    - 22.4 [Promoting to Primary — One Click](#224-promoting-to-primary--one-click)
-    - 22.5 [Safety Considerations](#225-safety-considerations)
-23. [Database Doctor](#23-database-doctor)
-24. [Live Database Monitor](#24-live-database-monitor)
-25. [Security Guidance](#25-security-guidance)
+12. [ERD](#12-erd)
+    - 12.1 [Generating an ERD](#121-generating-an-erd)
+    - 12.2 [What the Diagram Shows](#122-what-the-diagram-shows)
+    - 12.3 [Navigating the ERD](#123-navigating-the-erd)
+    - 12.4 [Saving the ERD](#124-saving-the-erd)
+13. [Query History](#13-query-history)
+14. [Parameterized Queries](#14-parameterized-queries)
+15. [EXPLAIN and Query Plans](#15-explain-and-query-plans)
+16. [Themes](#16-themes)
+17. [Logging](#17-logging)
+18. [Support Script Manager](#18-support-script-manager)
+19. [Keyboard Shortcuts Reference](#19-keyboard-shortcuts-reference)
+20. [Troubleshooting](#20-troubleshooting)
+21. [Recovery Mode](#21-recovery-mode)
+    - 21.1 [What Recovery Mode Means](#211-what-recovery-mode-means)
+    - 21.2 [Automatic Detection on Connect](#212-automatic-detection-on-connect)
+    - 21.3 [The Recovery Dialog](#213-the-recovery-dialog)
+    - 21.4 [Promoting to Primary — One Click](#214-promoting-to-primary--one-click)
+    - 21.5 [Safety Considerations](#215-safety-considerations)
+22. [Database Doctor](#22-database-doctor)
+23. [Live Database Monitor](#23-live-database-monitor)
+24. [Security Guidance](#24-security-guidance)
 
 ---
 
@@ -118,7 +126,7 @@ desktop SQL environment for PostgreSQL:
 - **View results:** sortable, filterable tables with live row filtering.
 - **Browse your schema:** tables, views, columns, indexes, foreign keys, and functions, with hover-to-view definitions.
 - **Manage transactions:** auto-commit or manual mode with explicit Commit and Rollback.
-- **Cancel queries cleanly:** sends `pg_cancel_backend()` to the server; the UI never freezes.
+- **Cancel queries cleanly:** sends a cancel request to the server so it stops work on its side; the UI never freezes.
 - **Parameterized queries:** named placeholders with safe server-side substitution.
 - **Export results:** CSV or JSON with a single click.
 - **Load and save SQL files:** open any `.sql` script and save your work to disk.
@@ -310,6 +318,41 @@ When your database connection is closed by the server (often after being idle fo
 
 This ensures you don't have to manually re-enter credentials or reopen the connection dialog if you step away from your desk and the connection times out.
 
+### 4.8 Connecting to Hosted PostgreSQL
+
+Hosted PostgreSQL services Supabase, Neon, Amazon RDS, Azure Database for PostgreSQL are ordinary PostgreSQL servers. Coruscant connects to them through the same connection dialog described above; there is no separate mode or plugin to install.
+
+**Supabase shortcut.** For Supabase you can skip most of the typing. In the connection manager click **Supabase…**, paste the project reference, choose the region, and leave the endpoint on **Session pooler — recommended**. Coruscant fills in the host, port `5432`, database `postgres`, the `postgres.<project-ref>` username, and SSL mode `require`. Enter the database password in the form afterwards and click **Test Connection**.
+
+**Step by step (any provider):**
+
+1. Open your provider's connection details panel. On Supabase this is **Project → Connect**; other providers use similar wording.
+2. Choose the **session pooler** or the **direct connection**, not the transaction pooler. See the warning below.
+3. Copy the host, port, database name, and username exactly as the provider shows them. Do not assume the username is `postgres` several providers qualify it with the project identifier, for example `postgres.abcdefghijklm`.
+4. Enter the database password. This is the database password from the provider, which is not the same as your account login for their web console.
+5. Set **SSL Mode** to `require`. Most hosted providers refuse unencrypted connections, so `prefer` may appear to work while silently falling back. Use `verify-full` if your provider documents a CA certificate.
+6. Click **Test Connection** to confirm before saving.
+
+> **Warning: avoid transaction poolers.** Many hosted providers offer a transaction pooler alongside the session pooler, usually on a different port on Supabase the transaction pooler is port `6543`. A transaction pooler can hand each statement to a different backend, which breaks three Coruscant features that need a stable session:
+>
+> - **Cancelling a running query** (section 6.4), which is keyed to the backend assigned when the connection opened
+> - **Transaction Mode** with Auto-commit switched off (section 8)
+> - **Explicit COMMIT and ROLLBACK**
+>
+> Ordinary queries still run, so the problem is easy to miss until a cancel or a rollback quietly fails to do what you expect. Use the session pooler or direct connection instead.
+
+**Features that do not apply to hosted databases.** Managed providers do not grant superuser rights to the account you connect with, and they manage replication and failover themselves. As a result:
+
+| Feature | On hosted PostgreSQL |
+|---|---|
+| Recovery Mode detection | Works reports the server state correctly |
+| Recovery Mode **Promote to Primary** | Unavailable `pg_promote()` is not permitted |
+| Doctor health checks | Work all four checks are read-only |
+| Doctor **VACUUM FREEZE** | Usually fails needs ownership of every table |
+| Doctor **Kill Blocker** / **Terminate Idle** | Usually fails terminating another role's backend needs superuser rights |
+| Live Database Monitor | Works though connection counts reflect the pooler, not your session alone |
+| Everything else | Works normally |
+
 ---
 
 ## 5. Writing SQL
@@ -494,7 +537,22 @@ Database `NULL` values are displayed as grey italic *NULL* in result tables, vis
 
 When exporting to CSV, `NULL` is written as an empty cell.
 
-### 7.7 Exporting Results
+### 7.7 Viewing a Single Cell
+
+Wide columns are awkward to read in a grid. **Double-click any cell** to open the Cell Content Viewer, a read-only monospaced window sized for long values — JSON documents, XML fragments, stack traces, or any text that the column is too narrow to show.
+
+The viewer provides:
+
+| Control | Purpose |
+|---|---|
+| Character count | Shown top-left, so you can see the true length of the value |
+| **Word Wrap** | On by default. Untick it to keep long lines unwrapped and scroll horizontally instead — useful for reading aligned or single-line JSON |
+| **Copy to Clipboard** | Copies the entire cell value, not the visible portion. The button briefly confirms with *Copied!* |
+| **Close** | Dismisses the viewer |
+
+By default the viewer closes itself about a second and a half after you copy, on the assumption that copying was what you came to do. To keep it open instead, untick **Auto-close cell viewer after copy** in the Schema Browser's **⚙ Settings** panel.
+
+### 7.8 Exporting Results
 
 Each result table has two export buttons:
 
@@ -594,7 +652,7 @@ public                          ← schema (bold)
 
 | Menu option | What it does |
 |---|---|
-| **⚡ Query Builder** | Opens the visual Query Builder — compose a SELECT with joins and field selection (see [§9.5](#95-visual-query-builder)) |
+| **⚡ Query Builder** | Opens the visual Query Builder — compose a SELECT with joins and field selection (see [§9.6](#96-visual-query-builder)) |
 | **Generate ERD** | Opens an entity-relationship diagram for the schema in your browser |
 | **🗺 Mind Map** | Opens a D3.js force-directed graph of all tables and FK relationships (see [§11.1](#111-schema-mind-map)) |
 | **🔍 QA Engine** | Runs an automated health check on the schema (see [§10](#10-qa-engine)) |
@@ -659,7 +717,28 @@ The schema tree is loaded automatically when you connect. If you make schema cha
 
 > **Tip:** If the Schema Browser shows nothing after connecting, verify that you connected to the correct database. The `postgres` system database contains almost no user objects. Check the connection dialog's **Database** field.
 
-### 9.5 Visual Query Builder
+### 9.5 The Schema Browser Toolbar
+
+Five buttons sit at the top of the Schema Browser:
+
+| Button | Action |
+|---|---|
+| **↻ Refresh** | Reload the schema tree (see [§9.4](#94-refreshing-the-schema)) |
+| **📜 Scripts** | Open the Support Script Manager (see [§18](#18-support-script-manager)) |
+| **⚙ Settings** | Show or hide the settings panel described below |
+| **📖 Guide** | Open the built-in quick-reference guide — a single window listing every keyboard shortcut and the main workflows, available offline with no connection required |
+| **ℹ About** | Version, licence, and credits |
+
+**The ⚙ Settings panel.** Click **⚙ Settings** to expand it. Four options are available, and each is remembered across restarts:
+
+| Option | Default | Effect |
+|---|---|---|
+| **Auto-complete** | On | Suggest table, column, and keyword names as you type in the editor. Also available on demand with **Ctrl+Space** |
+| **Line numbers in editor** | On | Show the line-number gutter, with the active line highlighted (see [§5.1](#51-the-sql-editor)) |
+| **Auto-close cell viewer after copy** | On | Dismiss the Cell Content Viewer shortly after you copy a value (see [§7.7](#77-viewing-a-single-cell)) |
+| **Run QA Engine on connect** | Off | Run the QA Engine automatically after connecting (see [§10.6](#106-auto-qa-on-connect)) |
+
+### 9.6 Visual Query Builder
 
 **Right-click any schema** and choose **⚡ Query Builder** to compose a SELECT statement visually — no SQL typing required.
 
@@ -755,7 +834,7 @@ To review or remove suppression rules, click **🔕 Manage Suppressions**. A dia
 
 Select a finding in the table and click **🔎 Find Scripts**. The Script Manager opens with a pre-populated search query combining the check name, table name, and column name. If you have a script collection indexed, relevant maintenance scripts appear immediately.
 
-> Requires a script index to be loaded first. See [§19](#19-support-script-manager) for setup instructions.
+> Requires a script index to be loaded first. See [§18](#18-support-script-manager) for setup instructions.
 
 ### 10.5 Exporting Findings to CSV
 
@@ -1076,7 +1155,7 @@ and SQL body text at 1×.
 ## 20. Troubleshooting
 
 > **Before troubleshooting any issue:** check the log file first — it records
-> every connection attempt, query, and error with timestamps. See [Section 14](#16-logging)
+> every connection attempt, query, and error with timestamps. See [§17](#17-logging)
 > for the file location and how to filter it.
 
 ### "Could not connect" error
@@ -1138,9 +1217,9 @@ Coruscant itself does not modify passwords — characters like `$`, `@`, `%`, an
 
 ---
 
-## 22. Recovery Mode
+## 21. Recovery Mode
 
-### 22.1 What Recovery Mode Means
+### 21.1 What Recovery Mode Means
 
 PostgreSQL enters **recovery mode** in two situations:
 
@@ -1149,7 +1228,7 @@ PostgreSQL enters **recovery mode** in two situations:
 
 If your production application is pointing at a server in recovery mode, write operations will fail with errors like `cannot execute INSERT in a read-only transaction` or `recovery is in progress`. Coruscant gives you the information and the controls to resolve this directly from the UI.
 
-### 22.2 Automatic Detection on Connect
+### 21.2 Automatic Detection on Connect
 
 Every time you successfully connect to a database, Coruscant silently runs `pg_is_in_recovery()` in the background. If the result is `true`:
 
@@ -1161,7 +1240,7 @@ No manual queries or extra steps are needed. Detection happens within millisecon
 
 If the server is a normal primary (`pg_is_in_recovery()` = `false`), nothing changes — the toolbar button remains available but unobtrusive.
 
-### 22.3 The Recovery Dialog
+### 21.3 The Recovery Dialog
 
 Click **🔴 Recovery** in the toolbar to open the Recovery Mode dialog. The dialog is available whenever you are connected, whether or not the server is in recovery mode.
 
@@ -1185,7 +1264,7 @@ The status card inside the dialog shows:
 - Red strip — server is in recovery mode. The **⚡ Promote to Primary** button is active.
 - Green strip — server is operating as a primary. The promote button is disabled and a confirmation message is shown.
 
-### 22.4 Promoting to Primary — One Click
+### 21.4 Promoting to Primary — One Click
 
 Promotion converts a standby server into a writable primary. Use this when:
 
@@ -1210,7 +1289,7 @@ Coruscant runs the promotion call in a background thread (the UI stays responsiv
 
 Coruscant tries `SELECT pg_promote()` first. This is available on PostgreSQL 12 and later and is the recommended approach. On older versions, `pg_promote()` is not defined and Coruscant automatically falls back to `SELECT pg_wal_replay_resume()`, which resumes WAL replay if paused and also triggers promotion on older standby configurations.
 
-### 22.5 Safety Considerations
+### 21.5 Safety Considerations
 
 > **Promotion is irreversible.** Once a standby is promoted it cannot be automatically re-attached to the original primary. The original primary must be rebuilt as a new standby from the promoted server.
 
@@ -1230,11 +1309,11 @@ If promotion fails, Coruscant shows the full error message from PostgreSQL. Comm
 
 ---
 
-## 23. Database Doctor
+## 22. Database Doctor
 
 The **Database Doctor** is a built-in diagnostic and repair panel that checks your PostgreSQL server for four of the most common operational problems and lets you fix them with a single click.
 
-### 23.1 Opening the Doctor
+### 22.1 Opening the Doctor
 
 Click the **🩺** button in the status bar footer (visible whenever a database connection is active). The dialog opens and waits for you to run a diagnosis.
 
@@ -1246,7 +1325,7 @@ Click **🔄 Run Diagnosis** to execute all four checks simultaneously in a back
 | 🟡 Amber border | Warning | Issue present — monitor or address soon |
 | 🔴 Red border | Critical | Immediate action recommended |
 
-### 23.2 Health Check — Lock Contention
+### 22.2 Health Check — Lock Contention
 
 **What it detects:** queries that are blocked waiting for a lock held by another session, using `pg_blocking_pids()`.
 
@@ -1262,7 +1341,7 @@ Click **🔄 Run Diagnosis** to execute all four checks simultaneously in a back
 
 > **Tip:** killing a blocker ends its transaction and rolls it back. All queries waiting on that lock are immediately unblocked.
 
-### 23.3 Health Check — Table Bloat
+### 22.3 Health Check — Table Bloat
 
 **What it detects:** tables with significant numbers of dead tuples (rows left over from `UPDATE` and `DELETE` operations that `autovacuum` has not yet reclaimed). Data is read from `pg_stat_user_tables`.
 
@@ -1279,7 +1358,7 @@ Click **🔄 Run Diagnosis** to execute all four checks simultaneously in a back
 | **VACUUM Selected** | Select a table row then click to run `VACUUM ANALYZE` on that table. |
 | **VACUUM All** | Runs `VACUUM ANALYZE` on every table shown in the bloat list. |
 
-### 23.4 Health Check — Connection Exhaustion
+### 22.4 Health Check — Connection Exhaustion
 
 **What it detects:** how many backends are connected relative to `max_connections`, and how many are in the `idle in transaction` state (which hold locks and prevent autovacuum from running).
 
@@ -1296,7 +1375,7 @@ Click **🔄 Run Diagnosis** to execute all four checks simultaneously in a back
 
 Both buttons require a confirmation prompt.
 
-### 23.5 Health Check — XID Wraparound
+### 22.5 Health Check — XID Wraparound
 
 **What it detects:** the age of each database's oldest unfrozen transaction ID (`datfrozenxid`) as a percentage of the 2-billion XID limit. Approaching this limit causes PostgreSQL to shut down to protect data integrity.
 
@@ -1312,7 +1391,7 @@ Both buttons require a confirmation prompt.
 
 > **Important:** `VACUUM FREEZE` operates on the currently connected database only. If the most critical database in the list is a different database, close this dialog, reconnect to that database, then reopen Database Doctor.
 
-### 23.6 How Repairs Work
+### 22.6 How Repairs Work
 
 - All repairs run in a background thread — the UI remains responsive.
 - Every destructive action (kill, terminate, VACUUM) shows a confirmation dialog before executing.
@@ -1321,17 +1400,17 @@ Both buttons require a confirmation prompt.
 
 ---
 
-## 24. Live Database Monitor
+## 23. Live Database Monitor
 
 The **Live Database Monitor** is a real-time dashboard that samples your PostgreSQL server on a timer and presents its health, throughput, and activity at a glance. Where the Database Doctor is diagnose-and-repair, the Monitor is observe-and-understand.
 
-### 24.1 Opening the Monitor
+### 23.1 Opening the Monitor
 
 Click the **📊 Dashboard** button in the status bar footer (visible whenever a database connection is active). The window opens and takes its first sample immediately, then refreshes automatically.
 
 The Monitor is **non-modal** — you can leave it open and keep writing and running queries in the main window while it updates. Re-clicking the button brings the existing window to the front rather than opening a second copy.
 
-### 24.2 Auto-refresh
+### 23.2 Auto-refresh
 
 By default the dashboard refreshes every **5 seconds**. Use the controls on the top bar to:
 
@@ -1341,7 +1420,7 @@ By default the dashboard refreshes every **5 seconds**. Use the controls on the 
 
 All sampling runs in a background thread, so refreshes never freeze the UI.
 
-### 24.3 KPI Gauges
+### 23.3 KPI Gauges
 
 A strip of ten live gauges summarises the server at a glance. Several are colour-coded (green / amber / red) so problems stand out immediately:
 
@@ -1358,11 +1437,11 @@ A strip of ten live gauges summarises the server at a glance. Several are colour
 | **Blocked / Locks** | Sessions blocked on a lock (red when any are blocked) |
 | **Commit Ratio** | Committed vs rolled-back transactions, with the deadlock count |
 
-### 24.4 Live Sparklines
+### 23.4 Live Sparklines
 
 Below the gauges, four rolling trend charts plot the recent history of **transactions/sec**, **connection count**, **cache-hit %**, and **rows-returned/sec**. Each shows the current value plus the window minimum and maximum, making spikes and trends obvious.
 
-### 24.5 Detail Tabs
+### 23.5 Detail Tabs
 
 The lower area breaks the server down across ten drill-down tabs:
 
@@ -1381,13 +1460,13 @@ The lower area breaks the server down across ten drill-down tabs:
 
 Each tab degrades gracefully: if a query returns nothing, or an optional extension such as `pg_stat_statements` is not installed, the tab shows a friendly note instead of blanking.
 
-### 24.6 How Rates Are Calculated
+### 23.6 How Rates Are Calculated
 
 Per-second rates (transactions, tuple activity, interval cache-hit) are computed as the **difference between two consecutive samples** divided by the elapsed time. The very first sample after opening therefore shows "collecting…" for rate gauges until a second sample arrives. If PostgreSQL statistics are reset while the Monitor is open, that data point is skipped so the charts never show a false spike.
 
 ---
 
-## 25. Security Guidance
+## 24. Security Guidance
 
 ### Passwords with Special Characters
 
@@ -1416,7 +1495,7 @@ Connection passwords are encoded (base64) before being saved to your operating s
 This encoding **is not encryption**. Anyone with access to the settings store can decode the passwords. On a shared or corporate machine:
 
 - Use the most restrictive account permissions possible.
-- Clear recent connections when finished: open the connection dialog and note that saved entries can only be removed by clearing the settings store manually.
+- Clear saved connections when finished: select the profile in the connection manager and click **Delete** (see [§4.5](#45-recent-connections)).
 - Consider using PostgreSQL's `~/.pgpass` file instead of saving passwords in Coruscant; enter the password manually each time and do not click OK until you have checked the connection details.
 
 ### SSL Recommendations
@@ -1460,7 +1539,7 @@ Right-click any schema in the Schema Browser and choose **⚡ Query Builder**:
 - **WHERE / ORDER BY / LIMIT** controls and a **live syntax-highlighted SQL preview** that updates on every change.
 - **⧉ Copy SQL** or **▶ Insert into Editor** — the statement lands at the cursor in the active tab and is never executed automatically.
 
-See [§9.5 Visual Query Builder](#95-visual-query-builder) for the full reference.
+See [§9.6 Visual Query Builder](#96-visual-query-builder) for the full reference.
 
 ---
 
@@ -1478,7 +1557,7 @@ Click the **📊 Dashboard** button in the status bar footer (visible whenever c
 
 The dialog is non-modal, so you can keep querying while it runs. Per-second rates are computed as deltas between refreshes, with automatic detection of statistics resets to avoid false spikes.
 
-See [§24 Live Database Monitor](#24-live-database-monitor) for the full reference.
+See [§23 Live Database Monitor](#23-live-database-monitor) for the full reference.
 
 ---
 
@@ -1497,7 +1576,7 @@ Click the **🩺** button in the status bar footer (visible whenever connected) 
 
 Each check displays a colour-coded severity card (green / amber / red). All repairs require confirmation and run off the UI thread. The diagnosis re-runs automatically after each repair.
 
-See [§23 Database Doctor](#23-database-doctor) for the full reference.
+See [§22 Database Doctor](#22-database-doctor) for the full reference.
 
 ---
 
@@ -1515,7 +1594,7 @@ Coruscant now automatically detects when a connected PostgreSQL server is in rec
 
 **One-click promote** — click **⚡ Promote to Primary** to convert the standby to a primary server. After a confirmation prompt, Coruscant calls `pg_promote()` (PostgreSQL 12+) or falls back to `pg_wal_replay_resume()`, runs the call off the UI thread, and refreshes the dialog to confirm the result.
 
-See [§22 Recovery Mode](#22-recovery-mode) for the full reference.
+See [§21 Recovery Mode](#21-recovery-mode) for the full reference.
 
 ---
 

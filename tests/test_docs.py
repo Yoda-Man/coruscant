@@ -21,8 +21,28 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
-_MANUAL = _ROOT / "docs" / "USER_MANUAL.md"
-_README = _ROOT / "Readme.md"
+
+
+def _locate(directory: Path, filename: str) -> Path:
+    """
+    Resolve *filename* case-insensitively within *directory*.
+
+    Git tracks the readme as README.md, but the working tree on a
+    case-insensitive filesystem may hold it as Readme.md.  Hardcoding either
+    spelling passes on Windows and fails on the Linux CI runner, so match on
+    the lowercased name and let the real path fall out.
+    """
+    want = filename.lower()
+    for p in sorted(directory.iterdir()):
+        if p.is_file() and p.name.lower() == want:
+            return p
+    raise AssertionError(
+        f"documentation file not found: {directory.relative_to(_ROOT)}/{filename}"
+    )
+
+
+_MANUAL = _locate(_ROOT / "docs", "USER_MANUAL.md")
+_README = _locate(_ROOT, "README.md")
 _DOCS = [_MANUAL, _README]
 
 

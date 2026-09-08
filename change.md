@@ -1,5 +1,78 @@
 # Changelog
 
+### 1.1.3
+
+Architectural cleanup, plus two user-visible changes to the Database Doctor.
+
+**New — VACUUM FULL, behind a warning proportionate to the risk**
+
+`vacuum_table()` had always accepted a `full` argument, but nothing in the UI
+passed it, and no test covered it: an untested code path that looked available.
+It is now a separate danger-styled **VACUUM FULL…** button on the Table Bloat
+card, selection-only — there is deliberately no "FULL All", because doing this
+to twenty tables at once is almost never what anyone means. The confirmation
+states plainly that it takes an ACCESS EXCLUSIVE lock, blocks *every* query
+including `SELECT`, needs roughly twice the table's size in free disk, cannot
+be undone partway, and should not run outside a maintenance window.
+
+**Fixed — the VACUUM confirmations were not accurate**
+
+Both plain-VACUUM dialogs claimed the operation was "safe and non-blocking".
+VACUUM takes a SHARE UPDATE EXCLUSIVE lock: it does not block `SELECT`,
+`INSERT`, `UPDATE` or `DELETE`, but it does contend with `ALTER TABLE`,
+`CREATE INDEX` and `REINDEX` on the same table. The dialogs now say which is
+which, rather than implying the operation is free of consequences.
+
+**Fixed — skip detection no longer depends on the server's language**
+
+v1.1.2 detected a refused VACUUM by matching the English words "skipping" and
+"can vacuum it" in `conn.notices`. PostgreSQL translates those messages
+according to `lc_messages`, so on a non-English server the check silently
+stopped matching — and failed *open*, back to reporting success for work that
+never happened. Ownership now comes from the catalog before the statement is
+issued (`pg_has_role`, `rolsuper`, and `pg_maintain` on PostgreSQL 16+), which
+is locale-independent and avoids a round-trip the server would refuse anyway.
+Verified against a live server: 279 tables correctly reported as
+un-maintainable.
+
+**Architecture — the layering is now enforced rather than described**
+
+The README claimed rules the code had quietly drifted from. Each is now true,
+and `tests/test_architecture.py` fails the build if it stops being true:
+
+- `ui/dialogs/connection.py` imported psycopg2 and opened its own connection
+  for **Test Connection**, so that button bypassed everything added centrally
+  and had drifted to its own connect timeout. It now goes through
+  `DatabaseManager`, which gained a `timeout` parameter.
+- `utils/logging_config.py` imported a dialog from `ui/`, inverting the
+  dependency. The UI now registers a presenter via `set_crash_reporter()`;
+  when none is registered the crash is still logged, just not shown.
+- `core/worker.py` imported psycopg2 only to catch its error type.
+  `core/database.py` — which documents itself as the single point of contact
+  with the driver — now re-exports `DatabaseError`, making that true.
+- `LOCKS_SQL` was defined in **both** `core/doctor.py` and `core/metrics.py`
+  with different text: different truncation, only one normalising whitespace,
+  only one bounding the row count. One definition now, with the better
+  behaviour of the two, and `WAIT_SECS_COL` naming the positional coupling
+  that `assess_locks()` depends on.
+- The README's "core/ has zero GUI imports" was simply false —
+  `core/worker.py` imports `QThread`. It is now described accurately, as the
+  one deliberate exception, and the test that enforces the rule names it and
+  checks the exemption is still warranted.
+
+**Tests**
+
+- `tests/test_architecture.py` — seven checks covering dependency direction,
+  driver confinement, Qt confinement, and duplicate SQL definitions. Each was
+  verified by reintroducing the corresponding defect.
+- The seven Doctor repairs each hand-rolled an identical result dialog; that
+  duplication is why the VACUUM bug needed fixing in two places. Collapsed
+  into `_run_repair()`, and thirteen function-local imports of
+  `StyledMessageBox` — which were working around a circular import that does
+  not exist — reduced to one at module level.
+
+652 tests, up from 645.
+
 ### 1.1.2
 
 **Fixed — Database Doctor reported VACUUM success having vacuumed nothing**

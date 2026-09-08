@@ -216,21 +216,10 @@ ORDER BY pg_database_size(datname) DESC NULLS LAST
 """
 
 #: Blocked / blocking sessions (lock contention).
-LOCKS_SQL = """
-SELECT
-    blocked.pid                                                     AS blocked_pid,
-    blocked.usename                                                 AS blocked_user,
-    EXTRACT(EPOCH FROM (now() - blocked.query_start))::int          AS wait_secs,
-    left(regexp_replace(blocked.query, '\\s+', ' ', 'g'), 60)      AS blocked_query,
-    blocking.pid                                                    AS blocking_pid,
-    blocking.usename                                                AS blocking_user,
-    left(regexp_replace(blocking.query, '\\s+', ' ', 'g'), 60)     AS blocking_query
-FROM pg_stat_activity AS blocked
-JOIN pg_stat_activity AS blocking
-     ON blocking.pid = ANY(pg_blocking_pids(blocked.pid))
-ORDER BY wait_secs DESC
-LIMIT 30
-"""
+# Blocked/blocking sessions are defined once, in core.doctor — the Doctor
+# diagnoses with this query and the Monitor displays it. Keeping a second
+# copy here let the two drift apart.
+from coruscant.core.doctor import LOCKS_SQL  # noqa: E402  (re-exported below)
 
 #: Streaming replication status (empty on servers with no standbys).
 REPLICATION_SQL = """

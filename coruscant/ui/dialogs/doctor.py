@@ -34,6 +34,7 @@ from PySide6.QtGui import QFont, QPixmap, QColor
 
 from coruscant.core.database import DatabaseManager, QueryResult
 import coruscant.core.doctor as _dr
+from coruscant.ui.dialogs.message import StyledMessageBox
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ _BASE = (
     if getattr(sys, "frozen", False)
     else Path(__file__).resolve().parents[3]
 )
+
 _BANNER_PATH = str(_BASE / "docs" / "coruscant3.png")
 
 # Severity → (border_color, strip_bg, badge_fg, badge_text)
@@ -644,10 +646,20 @@ class DatabaseDoctorDialog(QDialog):
     #  Repair helpers                                                    #
     # ---------------------------------------------------------------- #
 
+    def _run_repair(self, title: str, work: Callable[[], str]) -> None:
+        """
+        Run *work* off the UI thread and show whatever it reports under *title*.
+
+        Every repair used to hand-roll an identical `_done` closure around
+        StyledMessageBox.information. Seven copies of the same four lines is
+        how one bug becomes several: the VACUUM fix had to be applied twice
+        because two of those copies had drifted apart.
+        """
+        self._start_repair(work, lambda msg: StyledMessageBox.information(self, title, msg))
+
     def _start_repair(self, fn: Callable[[], str], on_done: Callable[[str], None]) -> None:
         """Run *fn* off the UI thread, call *on_done* with the result message."""
         if self._repair_worker and self._repair_worker.isRunning():
-            from coruscant.ui.dialogs.message import StyledMessageBox
             StyledMessageBox.warning(
                 self, "Repair in Progress",
                 "Another repair operation is already running. Please wait."
@@ -667,11 +679,9 @@ class DatabaseDoctorDialog(QDialog):
         self._run_diagnosis()
 
     def _on_repair_error(self, msg: str) -> None:
-        from coruscant.ui.dialogs.message import StyledMessageBox
         StyledMessageBox.critical(self, "Repair Failed", msg)
 
     def _confirm(self, title: str, text: str) -> bool:
-        from coruscant.ui.dialogs.message import StyledMessageBox
         return StyledMessageBox.question(self, title, text)
 
     # ---------------------------------------------------------------- #
@@ -682,7 +692,6 @@ class DatabaseDoctorDialog(QDialog):
         card = self._cards["locks"]
         selected = card.table.selectedItems()
         if not selected:
-            from coruscant.ui.dialogs.message import StyledMessageBox
             StyledMessageBox.information(
                 self, "No Selection",
                 "Select a row in the Lock Contention table to choose which blocker to kill."
@@ -713,11 +722,7 @@ class DatabaseDoctorDialog(QDialog):
                 else f"PID {pid} could not be terminated — it may have already finished."
             )
 
-        def _done(msg: str) -> None:
-            from coruscant.ui.dialogs.message import StyledMessageBox
-            StyledMessageBox.information(self, "Kill Blocker", msg)
-
-        self._start_repair(_do, _done)
+        self._run_repair("Kill Blocker", _do)
 
     # ---------------------------------------------------------------- #
     #  Table Bloat repairs                                              #
@@ -727,7 +732,6 @@ class DatabaseDoctorDialog(QDialog):
         card = self._cards["bloat"]
         rows = list({idx.row() for idx in card.table.selectedIndexes()})
         if not rows:
-            from coruscant.ui.dialogs.message import StyledMessageBox
             StyledMessageBox.information(
                 self, "No Selection",
                 "Select one or more rows in the Table Bloat list to VACUUM."
@@ -757,11 +761,7 @@ class DatabaseDoctorDialog(QDialog):
         def _do() -> str:
             return _vacuum_report(self._db, targets)
 
-        def _done(msg: str) -> None:
-            from coruscant.ui.dialogs.message import StyledMessageBox
-            StyledMessageBox.information(self, "VACUUM Complete", msg)
-
-        self._start_repair(_do, _done)
+        self._run_repair("VACUUM Complete", _do)
 
     def _vacuum_full_selected(self) -> None:
         """
@@ -777,7 +777,6 @@ class DatabaseDoctorDialog(QDialog):
         card = self._cards["bloat"]
         rows = list({idx.row() for idx in card.table.selectedIndexes()})
         if not rows:
-            from coruscant.ui.dialogs.message import StyledMessageBox
             StyledMessageBox.information(
                 self, "No Selection",
                 "Select one or more rows in the Table Bloat list.\n\n"
@@ -820,11 +819,7 @@ class DatabaseDoctorDialog(QDialog):
         def _do() -> str:
             return _vacuum_report(self._db, targets, full=True)
 
-        def _done(msg: str) -> None:
-            from coruscant.ui.dialogs.message import StyledMessageBox
-            StyledMessageBox.information(self, "VACUUM FULL Complete", msg)
-
-        self._start_repair(_do, _done)
+        self._run_repair("VACUUM FULL Complete", _do)
 
     def _vacuum_all(self) -> None:
         card = self._cards["bloat"]
@@ -851,11 +846,7 @@ class DatabaseDoctorDialog(QDialog):
         def _do() -> str:
             return _vacuum_report(self._db, targets)
 
-        def _done(msg: str) -> None:
-            from coruscant.ui.dialogs.message import StyledMessageBox
-            StyledMessageBox.information(self, "VACUUM Complete", msg)
-
-        self._start_repair(_do, _done)
+        self._run_repair("VACUUM Complete", _do)
 
     # ---------------------------------------------------------------- #
     #  Connection Health repairs                                        #
@@ -874,11 +865,7 @@ class DatabaseDoctorDialog(QDialog):
             n = self._db.terminate_connections(state="idle")
             return f"Terminated {n} idle connection(s)."
 
-        def _done(msg: str) -> None:
-            from coruscant.ui.dialogs.message import StyledMessageBox
-            StyledMessageBox.information(self, "Connections Terminated", msg)
-
-        self._start_repair(_do, _done)
+        self._run_repair("Connections Terminated", _do)
 
     def _terminate_idle_in_txn(self) -> None:
         if not self._confirm(
@@ -893,11 +880,7 @@ class DatabaseDoctorDialog(QDialog):
             n = self._db.terminate_connections(state="idle in transaction")
             return f"Terminated {n} idle-in-transaction connection(s)."
 
-        def _done(msg: str) -> None:
-            from coruscant.ui.dialogs.message import StyledMessageBox
-            StyledMessageBox.information(self, "Connections Terminated", msg)
-
-        self._start_repair(_do, _done)
+        self._run_repair("Connections Terminated", _do)
 
     # ---------------------------------------------------------------- #
     #  XID Wraparound repairs                                           #
@@ -925,11 +908,7 @@ class DatabaseDoctorDialog(QDialog):
                 f"cover the whole database."
             )
 
-        def _done(msg: str) -> None:
-            from coruscant.ui.dialogs.message import StyledMessageBox
-            StyledMessageBox.information(self, "VACUUM FREEZE Complete", msg)
-
-        self._start_repair(_do, _done)
+        self._run_repair("VACUUM FREEZE Complete", _do)
 
     # ---------------------------------------------------------------- #
     #  Cleanup                                                           #

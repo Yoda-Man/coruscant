@@ -26,27 +26,41 @@ ERROR    = "error"
 
 # ── 1. Lock Contention ────────────────────────────────────────────── #
 
+#: Blocked/blocking sessions.
+#:
+#: The single definition of "who is waiting on whom". The Doctor diagnoses with
+#: it and the Live Monitor displays it; both previously carried their own copy,
+#: which had already drifted (different truncation, one normalised whitespace,
+#: only one bounded the row count). Two spellings of one query is how a bad
+#: column name survives in the copy nobody exercises.
+#:
+#: Column order is part of the contract: assess_locks() reads wait_secs by
+#: position. WAIT_SECS_COL names that index so the coupling is visible.
 LOCKS_SQL = """
 SELECT
-    blocked.pid                                              AS blocked_pid,
-    blocked.usename                                          AS blocked_user,
-    left(blocked.query, 80)                                  AS blocked_query,
-    EXTRACT(EPOCH FROM (now() - blocked.query_start))::int   AS wait_secs,
-    blocking.pid                                             AS blocking_pid,
-    blocking.usename                                         AS blocking_user,
-    left(blocking.query, 60)                                 AS blocking_query
+    blocked.pid                                                   AS blocked_pid,
+    blocked.usename                                               AS blocked_user,
+    left(regexp_replace(blocked.query, '\\s+', ' ', 'g'), 80)     AS blocked_query,
+    EXTRACT(EPOCH FROM (now() - blocked.query_start))::int        AS wait_secs,
+    blocking.pid                                                  AS blocking_pid,
+    blocking.usename                                              AS blocking_user,
+    left(regexp_replace(blocking.query, '\\s+', ' ', 'g'), 60)    AS blocking_query
 FROM  pg_stat_activity AS blocked
 JOIN  pg_stat_activity AS blocking
       ON  blocking.pid = ANY(pg_blocking_pids(blocked.pid))
 ORDER BY wait_secs DESC
+LIMIT 30
 """
+
+#: Index of wait_secs within a LOCKS_SQL row.
+WAIT_SECS_COL = 3
 
 
 def assess_locks(rows: list[tuple]) -> tuple[str, str]:
     n = len(rows)
     if n == 0:
         return OK, "No blocked queries detected."
-    max_wait = max(int(r[3] or 0) for r in rows)
+    max_wait = max(int(r[WAIT_SECS_COL] or 0) for r in rows)
     sev = CRITICAL if max_wait > 60 else WARNING
     return sev, f"{n} blocked query/ies — longest waiting {_fmt_dur(max_wait)}."
 

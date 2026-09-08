@@ -23,11 +23,10 @@ from __future__ import annotations
 
 import logging
 
-import psycopg2
 
 from PySide6.QtCore import QThread, Signal
 
-from coruscant.core.database import DatabaseManager, PGCODE_QUERY_CANCELED
+from coruscant.core.database import DatabaseManager, DatabaseError, PGCODE_QUERY_CANCELED
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +63,7 @@ class QueryWorker(QThread):
             log.debug("QueryWorker finished  results=%d", len(results))
             self.finished.emit(results)
 
-        except psycopg2.Error as exc:
+        except DatabaseError as exc:
             if getattr(exc, "pgcode", None) == PGCODE_QUERY_CANCELED:
                 log.warning("Query cancelled by user")
                 self.cancelled.emit()

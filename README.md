@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.1.2  
+**Version:** 1.1.3  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -22,7 +22,7 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **Separate result tab per statement** is the core feature. Three `SELECT`s produce three independently sortable, filterable, exportable grids.
 
-**Clean layered architecture:** `core/` has zero GUI imports. The SQL parser, database manager, and background worker can all be tested without a running Qt application. `MainWindow` is a pure coordinator it wires signals but contains no SQL logic.
+**Clean layered architecture, enforced by tests:** the SQL parser, database manager, QA engine and metrics all import no Qt and are tested without a running application. `worker.py` is the one deliberate exception — it *is* a `QThread`. The UI never touches psycopg2; every connection goes through `DatabaseManager`. These are not conventions to be remembered: `tests/test_architecture.py` fails the build when a lower layer imports the UI, when the UI imports the driver, or when the same SQL is defined in two modules.
 
 **Background execution with real cancellation:** queries run in a `QThread` worker; the UI never freezes. Cancel issues a PostgreSQL cancel request over the libpq protocol the *server* stops the query, not just the client.
 
@@ -157,7 +157,7 @@ coruscant/
 ├── __init__.py              # __version__, __author__, __app_name__
 ├── app.py                   # QApplication factory
 │
-├── core/                    # Business logic — zero GUI imports
+├── core/                    # Business logic — no Qt except worker.py (a QThread)
 │   ├── connections.py       # Saved profiles, pgAdmin import
 │   ├── database.py          # DatabaseManager (connect, execute, transactions)
 │   ├── worker.py            # QueryWorker — background QThread
@@ -191,7 +191,7 @@ coruscant/
     └── themes.py            # apply_dark(), apply_light()
 ```
 
-**Dependency rules:** `core` has zero GUI imports. `ui` depends on `core` and `utils`. `core` never imports from `ui`.
+**Dependency rules:** dependencies point inward. `ui` depends on `core` and `utils`; neither `core` nor `utils` imports from `ui`. Where the UI genuinely must be involved — showing a crash dialog — it registers a callback (`logging_config.set_crash_reporter`) rather than being imported. `psycopg2` is confined to `core/database.py`, which re-exports `DatabaseError` for callers that need to catch one. Only `core/worker.py` imports Qt, because it is a `QThread`. All of this is enforced by `tests/test_architecture.py`.
 
 ## Connecting to a Database
 

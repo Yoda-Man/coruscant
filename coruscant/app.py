@@ -58,6 +58,12 @@ def create_app() -> QApplication:
     app.setStyle("Fusion")
 
     qInstallMessageHandler(_qt_message_handler)
+
+    # utils.logging_config cannot import a dialog (utils sits below ui), so the
+    # UI layer supplies the presenter for unhandled exceptions here.
+    from coruscant.utils.logging_config import set_crash_reporter
+    from coruscant.ui.dialogs.message import StyledMessageBox
+    set_crash_reporter(lambda title, body: StyledMessageBox.critical(None, title, body))
     
     # ── Application Icon ─────────────────────────────────────────── #
     _BASE = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]

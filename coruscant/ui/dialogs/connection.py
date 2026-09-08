@@ -47,6 +47,7 @@ from coruscant.core.connections import (
     serialise_connections,
     supabase_profile,
 )
+from coruscant.core.database import DatabaseManager
 from coruscant.ui.dialogs.message import StyledMessageBox
 
 
@@ -766,21 +767,18 @@ class ConnectionDialog(QDialog):
         conn = self._profile_from_form()
         if not conn:
             return
+        # Goes through DatabaseManager rather than calling psycopg2 here, so
+        # Test Connection exercises the same code path as Connect. Opening the
+        # driver directly meant this button silently bypassed every change made
+        # centrally — and drifted to its own 5-second timeout in the process.
+        probe = DatabaseManager()
         try:
-            import psycopg2
-            db = psycopg2.connect(
-                host=conn.host,
-                port=conn.port,
-                dbname=conn.database,
-                user=conn.user,
-                password=conn.password,
-                connect_timeout=5,
-                sslmode=conn.ssl_mode,
-            )
-            db.close()
+            probe.connect(**conn.connect_params(), timeout=5)
             StyledMessageBox.information(self, "Test Connection", "Connection successful.")
         except Exception as exc:
             StyledMessageBox.critical(self, "Test Connection", f"Connection failed:\n\n{exc}")
+        finally:
+            probe.disconnect()
 
     def _on_connect(self) -> None:
         conn = self._profile_from_form()

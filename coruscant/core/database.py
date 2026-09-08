@@ -34,6 +34,14 @@ log = logging.getLogger(__name__)
 # SQLSTATE 57014 — sent by PostgreSQL when pg_cancel_backend() fires.
 PGCODE_QUERY_CANCELED = "57014"
 
+#: The driver's error type, re-exported.
+#:
+#: This module is the application's single point of contact with psycopg2,
+#: so callers that need to catch a database error import it from here rather
+#: than importing the driver themselves. Swapping drivers then touches this
+#: module alone.
+DatabaseError = psycopg2.Error
+
 # Can the current role actually maintain this table?
 #
 # PostgreSQL refuses maintenance on a table you do not own by emitting a
@@ -132,8 +140,13 @@ class DatabaseManager:
         user: str,
         password: str,
         ssl_mode: str = "prefer",
+        timeout: int = 10,
     ) -> None:
-        """Open a connection.  Raises psycopg2.OperationalError on failure."""
+        """Open a connection.  Raises psycopg2.OperationalError on failure.
+
+        `timeout` is the libpq connect timeout in seconds; callers probing a
+        connection interactively pass something shorter than the default.
+        """
         if self._conn and not self._conn.closed:
             self._conn.close()
 
@@ -146,7 +159,7 @@ class DatabaseManager:
                 dbname=database,
                 user=user,
                 password=password,
-                connect_timeout=10,
+                connect_timeout=int(timeout),
                 sslmode=ssl_mode,
             )
             self._conn.autocommit = True

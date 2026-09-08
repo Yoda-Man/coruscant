@@ -33,6 +33,7 @@ import logging
 import logging.handlers
 import os
 import sys
+from typing import Callable
 from pathlib import Path
 
 _FMT        = "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(name)-38s | %(message)s"
@@ -102,6 +103,20 @@ def setup_logging() -> Path:
     return log_file
 
 
+#: Optional presenter for unhandled exceptions, registered by the UI layer.
+#:
+#: Logging must work before any GUI exists, and utils sits below ui, so this
+#: module cannot import a dialog. The UI supplies one via set_crash_reporter();
+#: when nothing is registered the crash is still logged, just not shown.
+_crash_reporter: Callable[[str, str], None] | None = None
+
+
+def set_crash_reporter(fn: Callable[[str, str], None] | None) -> None:
+    """Register a callable taking (title, html_body) to display a crash."""
+    global _crash_reporter
+    _crash_reporter = fn
+
+
 def _install_excepthook(log_file: Path) -> None:
     """
     Replace sys.excepthook so unhandled exceptions are logged with a full
@@ -120,14 +135,14 @@ def _install_excepthook(log_file: Path) -> None:
             exc_info=(exc_type, exc_value, exc_tb),
         )
 
-        # Show a dialog when Qt is already running so the user is not left
-        # wondering why the window disappeared.
+        # Tell the user, if a presenter has been registered. utils must not
+        # import from ui — the UI registers a callback instead (see
+        # set_crash_reporter and coruscant.app), so the dependency points
+        # inward like every other one in the codebase.
         try:
-            from PySide6.QtWidgets import QApplication
-            from coruscant.ui.dialogs.message import StyledMessageBox
             import traceback
 
-            if QApplication.instance():
+            if _crash_reporter is not None:
                 tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
                 body   = (
                     f"An unexpected error occurred and Coruscant must close.<br><br>"
@@ -136,7 +151,7 @@ def _install_excepthook(log_file: Path) -> None:
                     f"<b>Traceback:</b><br/>"
                     f"<pre style='font-family: monospace; font-size: 11px;'>{tb_str}</pre>"
                 )
-                StyledMessageBox.critical(None, "Unexpected Error", body)
+                _crash_reporter("Unexpected Error", body)
         except Exception:
             pass  # never let the crash handler itself crash
 

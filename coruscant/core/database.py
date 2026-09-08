@@ -34,6 +34,20 @@ log = logging.getLogger(__name__)
 # SQLSTATE 57014 — sent by PostgreSQL when pg_cancel_backend() fires.
 PGCODE_QUERY_CANCELED = "57014"
 
+# PostgreSQL reports a VACUUM it refused to perform as a WARNING, not an error,
+# and still reports overall success.  Matched on the stable parts of the message
+# ("skipping" plus the ownership phrase) rather than the whole string, which
+# differs between the VACUUM and ANALYZE variants.
+def _skip_warnings(notices: list) -> list[str]:
+    """Return the notices that report a table being skipped for lack of rights."""
+    out = []
+    for n in notices:
+        text = str(n).strip()
+        low = text.lower()
+        if "skipping" in low and ("can vacuum it" in low or "can analyze it" in low):
+            out.append(text)
+    return out
+
 
 class QueryResult:
     """Value object returned for each executed statement."""
@@ -364,13 +378,23 @@ class DatabaseManager:
         table: str,
         full: bool = False,
         analyze: bool = True,
-    ) -> None:
+    ) -> list[str]:
         """
         VACUUM (optionally FULL + ANALYZE) a single table.
 
         VACUUM cannot run inside a transaction, so this method temporarily
         switches the connection to autocommit mode regardless of the current
         setting and restores it afterward.
+
+        Returns a list of skip warnings, empty when the table was actually
+        vacuumed.  PostgreSQL does *not* raise an error when you VACUUM a table
+        you do not own — it emits
+
+            WARNING:  skipping "x" --- only table or database owner can vacuum it
+
+        and reports success.  Callers that treat "no exception" as "work done"
+        will tell the user 20 tables were vacuumed when none were, so the
+        warning is returned rather than discarded.
 
         Raises RuntimeError if not connected, psycopg2.Error on failure.
         """
@@ -385,10 +409,21 @@ class DatabaseManager:
             if analyze:
                 opts.append("ANALYZE")
             cmd = f"VACUUM ({', '.join(opts)}) {qual}" if opts else f"VACUUM {qual}"
+            # Drop anything left by an earlier statement so stale warnings are
+            # not attributed to this table.
+            notices = getattr(self._conn, "notices", None)
+            if notices is not None:
+                del notices[:]
             with self._conn.cursor() as cur:  # type: ignore[union-attr]
                 cur.execute(cmd)
-            log.info("VACUUM complete  schema=%s  table=%s  full=%s  analyze=%s",
-                     schema, table, full, analyze)
+            skipped = _skip_warnings(getattr(self._conn, "notices", []) or [])
+            if skipped:
+                log.warning("VACUUM skipped  schema=%s  table=%s  reason=%s",
+                            schema, table, skipped[0])
+            else:
+                log.info("VACUUM complete  schema=%s  table=%s  full=%s  analyze=%s",
+                         schema, table, full, analyze)
+            return skipped
         finally:
             self._conn.autocommit = old_ac  # type: ignore[union-attr]
 
@@ -425,7 +460,7 @@ class DatabaseManager:
                  state, min_idle_mins, n)
         return n
 
-    def vacuum_freeze(self) -> None:
+    def vacuum_freeze(self) -> list[str]:
         """
         Issue VACUUM FREEZE on all tables in the current database.
 
@@ -433,15 +468,28 @@ class DatabaseManager:
         Runs with autocommit=True (required for VACUUM).
         Can be slow on large databases; run off the UI thread.
 
+        Returns the skip warnings for tables the current role does not own —
+        database-wide VACUUM silently passes over those (see vacuum_table).
+        An empty list means every table was processed.
+
         Raises RuntimeError if not connected, psycopg2.Error on failure.
         """
         self._ensure_connected()
         old_ac = self._conn.autocommit  # type: ignore[union-attr]
         self._conn.autocommit = True    # type: ignore[union-attr]
         try:
+            notices = getattr(self._conn, "notices", None)
+            if notices is not None:
+                del notices[:]
             with self._conn.cursor() as cur:  # type: ignore[union-attr]
                 cur.execute("VACUUM FREEZE")
-            log.info("VACUUM FREEZE complete")
+            skipped = _skip_warnings(getattr(self._conn, "notices", []) or [])
+            if skipped:
+                log.warning("VACUUM FREEZE skipped %d table(s) not owned by the "
+                            "current role", len(skipped))
+            else:
+                log.info("VACUUM FREEZE complete")
+            return skipped
         finally:
             self._conn.autocommit = old_ac  # type: ignore[union-attr]
 

@@ -713,3 +713,67 @@ class TestGetSchemaTree:
         result = db.get_schema_tree()
         names = [s["schema"] for s in result]
         assert names == sorted(names)
+
+
+# ---------------------------------------------------------------------------
+# VACUUM permission warnings
+# ---------------------------------------------------------------------------
+
+class TestVacuumReportsSkippedTables:
+    """
+    PostgreSQL does not raise an error when you VACUUM a table you do not own.
+    It emits a WARNING and carries on:
+
+        WARNING:  skipping "tgorganisationidentification" ---
+                  only table or database owner can vacuum it
+
+    The Doctor reported "VACUUM ANALYZE complete on 20 table(s)" while nothing
+    had actually been vacuumed: dead tuples unchanged and last_vacuum still
+    NULL. vacuum_table() must surface those warnings so callers can tell the
+    difference between work done and work skipped.
+    """
+
+    # Verbatim from PostgreSQL 15.8.
+    SKIP = ('WARNING:  skipping "tgorganisationidentification" --- '
+            'only table or database owner can vacuum it\n')
+
+    @staticmethod
+    def _emit_on_execute(mc, cur, notice):
+        """Publish `notice` when a statement runs, as psycopg2 does.
+
+        A real connection appends to conn.notices during execute(). vacuum_table
+        clears stale notices first, so the notice must arrive as a side effect
+        of the call rather than being pre-seeded.
+        """
+        mc.notices = []
+        cur.execute.side_effect = lambda *a, **k: mc.notices.append(notice)
+
+    def test_returns_warning_when_table_was_skipped(self):
+        db, mc, cur = _make_connected_db()
+        self._emit_on_execute(mc, cur, self.SKIP)
+        warnings = db.vacuum_table("tgorganisation", "tgorganisationidentification")
+        assert warnings, "permission-denied skip must be reported to the caller"
+        assert "only table or database owner" in warnings[0]
+
+    def test_returns_empty_when_vacuum_actually_ran(self):
+        db, mc, _ = _make_connected_db()
+        mc.notices = []
+        assert db.vacuum_table("public", "orders") == []
+
+    def test_clears_stale_notices_before_running(self):
+        """A warning from an earlier statement must not be misreported as this one's."""
+        db, mc, _ = _make_connected_db()
+        mc.notices = ["WARNING:  something unrelated and older\n"]
+        assert db.vacuum_table("public", "orders") == []
+
+    def test_only_permission_skips_are_reported(self):
+        """Routine chatter (e.g. vacuum progress info) must not be flagged as a skip."""
+        db, mc, cur = _make_connected_db()
+        self._emit_on_execute(mc, cur, 'INFO:  vacuuming "public.orders"\n')
+        assert db.vacuum_table("public", "orders") == []
+
+    def test_autocommit_is_still_restored(self):
+        db, mc, cur = _make_connected_db(autocommit=False)
+        self._emit_on_execute(mc, cur, self.SKIP)
+        db.vacuum_table("s", "t")
+        assert mc.autocommit is False

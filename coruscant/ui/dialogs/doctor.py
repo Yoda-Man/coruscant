@@ -197,6 +197,42 @@ class _DiagnosisWorker(QThread):
         self.finished.emit(results)
 
 
+def _vacuum_report(db, targets: list[tuple[str, str]]) -> str:
+    """
+    VACUUM ANALYZE each (schema, table) and describe what actually happened.
+
+    PostgreSQL skips a table you do not own with a WARNING rather than an
+    error, so a loop that only watches for exceptions will report success
+    having vacuumed nothing.  Count the skips and say so.
+    """
+    skipped: list[str] = []
+    for schema, table in targets:
+        if db.vacuum_table(schema, table, full=False, analyze=True):
+            skipped.append(f"{schema}.{table}")
+
+    done = len(targets) - len(skipped)
+    if not skipped:
+        return f"VACUUM ANALYZE complete on {done} table(s)."
+
+    listing = "\n".join(f"  • {n}" for n in skipped[:10])
+    if len(skipped) > 10:
+        listing += f"\n  … and {len(skipped) - 10} more"
+
+    if done == 0:
+        head = (f"No tables were vacuumed.\n\n"
+                f"PostgreSQL skipped all {len(skipped)} table(s) because you do "
+                f"not own them, and only the table or database owner can vacuum "
+                f"a table.")
+    else:
+        n = len(skipped)
+        head = (f"VACUUM ANALYZE completed on {done} of {len(targets)} table(s).\n\n"
+                f"{n} {'was' if n == 1 else 'were'} skipped because you do not "
+                f"own {'it' if n == 1 else 'them'}:")
+    return (f"{head}\n\n{listing}\n\n"
+            f"Ask a superuser, or the owning role, to vacuum these — or let "
+            f"autovacuum handle them.")
+
+
 class _RepairWorker(QThread):
     """Runs a single repair callable off the UI thread."""
 
@@ -713,9 +749,7 @@ class DatabaseDoctorDialog(QDialog):
             return
 
         def _do() -> str:
-            for schema, table in targets:
-                self._db.vacuum_table(schema, table, full=False, analyze=True)
-            return f"VACUUM ANALYZE complete on {len(targets)} table(s)."
+            return _vacuum_report(self._db, targets)
 
         def _done(msg: str) -> None:
             from coruscant.ui.dialogs.message import StyledMessageBox
@@ -743,9 +777,7 @@ class DatabaseDoctorDialog(QDialog):
             return
 
         def _do() -> str:
-            for schema, table in targets:
-                self._db.vacuum_table(schema, table, full=False, analyze=True)
-            return f"VACUUM ANALYZE complete on {len(targets)} table(s)."
+            return _vacuum_report(self._db, targets)
 
         def _done(msg: str) -> None:
             from coruscant.ui.dialogs.message import StyledMessageBox
@@ -810,8 +842,16 @@ class DatabaseDoctorDialog(QDialog):
             return
 
         def _do() -> str:
-            self._db.vacuum_freeze()
-            return "VACUUM FREEZE complete on the current database."
+            skipped = self._db.vacuum_freeze()
+            if not skipped:
+                return "VACUUM FREEZE complete on the current database."
+            return (
+                f"VACUUM FREEZE ran, but PostgreSQL skipped {len(skipped)} table(s) "
+                f"that the current role does not own — only the table or database "
+                f"owner can vacuum a table, so their transaction ID age is "
+                f"unchanged.\n\nRun this as a superuser or as the owning role to "
+                f"cover the whole database."
+            )
 
         def _done(msg: str) -> None:
             from coruscant.ui.dialogs.message import StyledMessageBox

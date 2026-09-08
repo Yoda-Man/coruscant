@@ -38,7 +38,7 @@ def _make_psycopg2_stub():
 
     extras = types.ModuleType("psycopg2.extras")
     exts   = types.ModuleType("psycopg2.extensions")
-    exts.STATUS_IN_TRANSACTION = 1
+    exts.STATUS_IN_TRANSACTION = 2   # must match psycopg2's real value
 
     mod.extras     = extras
     mod.extensions = exts
@@ -47,7 +47,14 @@ def _make_psycopg2_stub():
     sys.modules.setdefault("psycopg2.extensions", exts)
     return mod
 
-_psycopg2 = _make_psycopg2_stub()
+_make_psycopg2_stub()
+
+# Bind to whichever psycopg2 is actually in play, not to the stub object.
+# setdefault() is a no-op when the real driver has already been imported (see
+# tests/conftest.py), and in that case production code raises and catches the
+# *real* psycopg2.Error — so tests raising the stub's error class would not be
+# caught by the code under test.
+_psycopg2 = sys.modules["psycopg2"]
 
 from coruscant.core.database import (   # noqa: E402  (import after stub)
     DatabaseManager,
@@ -100,7 +107,7 @@ def _make_connected_db(
     mock_conn.closed = 0    # psycopg2 uses int 0 = open, != 0 = closed
     mock_conn.autocommit = autocommit
     mock_conn.encoding = "utf-8"
-    mock_conn.status = 1   # STATUS_IN_TRANSACTION
+    mock_conn.status = _psycopg2.extensions.STATUS_IN_TRANSACTION
 
     _calls = count()
     mock_conn.cursor.side_effect = lambda: (
@@ -313,7 +320,7 @@ class TestInTransaction:
 
     def test_true_when_autocommit_off_and_in_transaction(self):
         db, mc, _ = _make_connected_db(autocommit=False)
-        mc.status = 1   # STATUS_IN_TRANSACTION
+        mc.status = _psycopg2.extensions.STATUS_IN_TRANSACTION
         db._conn = mc
         # autocommit is False → in_transaction should be True
         assert db.in_transaction is True

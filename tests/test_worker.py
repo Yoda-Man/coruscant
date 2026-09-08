@@ -101,9 +101,22 @@ def _get_psycopg2_error():
 
 
 def _make_exc(msg="err", pgcode="00000", statement=""):
-    """Construct a psycopg2.Error compatible with whichever stub is active."""
+    """
+    Construct a psycopg2.Error carrying a given pgcode and statement.
+
+    On the real driver `pgcode` and `statement` are read-only C attributes, so
+    they cannot be assigned on an instance. Subclassing and declaring them as
+    plain class attributes shadows those descriptors, which lets the test set
+    them while keeping the exception a genuine psycopg2.Error — so
+    `except psycopg2.Error` in the worker still catches it.
+    """
     ErrCls = _get_psycopg2_error()
-    exc = ErrCls(msg)
+
+    class _TestError(ErrCls):       # type: ignore[misc, valid-type]
+        pgcode = None
+        statement = None
+
+    exc = _TestError(msg)
     exc.pgcode = pgcode
     exc.statement = statement
     return exc

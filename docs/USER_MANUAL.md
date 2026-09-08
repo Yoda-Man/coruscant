@@ -349,7 +349,7 @@ Hosted PostgreSQL services Supabase, Neon, Amazon RDS, Azure Database for Postgr
 | Recovery Mode **Promote to Primary** | Unavailable `pg_promote()` is not permitted |
 | Doctor health checks | Work all four checks are read-only |
 | Doctor **VACUUM FREEZE** | Usually fails needs ownership of every table |
-| Doctor **Kill Blocker** / **Terminate Idle** | Usually fails terminating another role's backend needs superuser rights |
+| Doctor **Kill Selected Blocker** / **Terminate Idle** | Usually fails terminating another role's backend needs superuser rights |
 | Live Database Monitor | Works though connection counts reflect the pooler, not your session alone |
 | Everything else | Works normally |
 
@@ -1337,7 +1337,7 @@ Click **🔄 Run Diagnosis** to execute all four checks simultaneously in a back
 
 | Button | Action |
 |--------|--------|
-| **Kill Blocker** | Select a row in the lock table then click this button to call `pg_terminate_backend(pid)` on the blocking session. Requires confirmation. |
+| **Kill Selected Blocker** | Select a row in the lock table then click this button to call `pg_terminate_backend(pid)` on the blocking session. Requires confirmation. |
 
 > **Tip:** killing a blocker ends its transaction and rolls it back. All queries waiting on that lock are immediately unblocked.
 
@@ -1357,6 +1357,31 @@ Click **🔄 Run Diagnosis** to execute all four checks simultaneously in a back
 |--------|--------|
 | **VACUUM Selected** | Select a table row then click to run `VACUUM ANALYZE` on that table. |
 | **VACUUM All** | Runs `VACUUM ANALYZE` on every table shown in the bloat list. |
+| **VACUUM FULL…** | Runs `VACUUM FULL` on the selected tables only. See the warning below before using it. |
+
+> **Warning — VACUUM FULL is not the same as VACUUM.** It takes an `ACCESS
+> EXCLUSIVE` lock and rewrites each table from scratch. While it runs, every
+> query against that table blocks — including `SELECT` — so the application
+> will appear to hang rather than merely slow down. It also needs roughly twice
+> the table's size free on disk, and cancelling it rolls the whole rewrite back.
+>
+> Plain `VACUUM` reclaims the same dead rows for re-use without any of that.
+> Use `VACUUM FULL` only when you need to return disk space to the operating
+> system, and not against a live system outside a maintenance window. It is
+> selection-only by design — there is no "FULL All" button.
+
+**Locking.** Plain `VACUUM`, `VACUUM ANALYZE` and `VACUUM FREEZE` take a
+`SHARE UPDATE EXCLUSIVE` lock: they do **not** block `SELECT`, `INSERT`,
+`UPDATE` or `DELETE`, but they do contend with DDL such as `ALTER TABLE`,
+`CREATE INDEX` and `REINDEX` on the same table. Only `VACUUM FULL` blocks reads.
+
+**If you do not own the table.** Only a table's owner (or a superuser) may
+vacuum it. PostgreSQL does not treat this as an error — it emits a warning and
+reports success — so Coruscant checks ownership against the catalog *before*
+issuing the statement and tells you exactly which tables it could not touch,
+rather than reporting work that did not happen. On managed PostgreSQL
+(Supabase, Neon, RDS, Azure) this is the normal outcome: ask the owning role or
+a superuser to vacuum those tables, or leave them to autovacuum.
 
 ### 22.4 Health Check — Connection Exhaustion
 

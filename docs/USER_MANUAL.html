@@ -659,7 +659,7 @@ To delete a connection from your history, select it in the drop-down and click t
 <td>Usually fails needs ownership of every table</td>
 </tr>
 <tr>
-<td>Doctor <strong>Kill Blocker</strong> / <strong>Terminate Idle</strong></td>
+<td>Doctor <strong>Kill Selected Blocker</strong> / <strong>Terminate Idle</strong></td>
 <td>Usually fails terminating another role's backend needs superuser rights</td>
 </tr>
 <tr>
@@ -1870,7 +1870,7 @@ for the file location and how to filter it.</p>
 </thead>
 <tbody>
 <tr>
-<td><strong>Kill Blocker</strong></td>
+<td><strong>Kill Selected Blocker</strong></td>
 <td>Select a row in the lock table then click this button to call <code>pg_terminate_backend(pid)</code> on the blocking session. Requires confirmation.</td>
 </tr>
 </tbody>
@@ -1901,8 +1901,34 @@ for the file location and how to filter it.</p>
 <td><strong>VACUUM All</strong></td>
 <td>Runs <code>VACUUM ANALYZE</code> on every table shown in the bloat list.</td>
 </tr>
+<tr>
+<td><strong>VACUUM FULL…</strong></td>
+<td>Runs <code>VACUUM FULL</code> on the selected tables only. See the warning below before using it.</td>
+</tr>
 </tbody>
 </table>
+<blockquote class="warn">
+<p><strong>Warning — VACUUM FULL is not the same as VACUUM.</strong> It takes an <code>ACCESS
+EXCLUSIVE</code> lock and rewrites each table from scratch. While it runs, every
+query against that table blocks — including <code>SELECT</code> — so the application
+will appear to hang rather than merely slow down. It also needs roughly twice
+the table's size free on disk, and cancelling it rolls the whole rewrite back.</p>
+<p>Plain <code>VACUUM</code> reclaims the same dead rows for re-use without any of that.
+Use <code>VACUUM FULL</code> only when you need to return disk space to the operating
+system, and not against a live system outside a maintenance window. It is
+selection-only by design — there is no "FULL All" button.</p>
+</blockquote>
+<p><strong>Locking.</strong> Plain <code>VACUUM</code>, <code>VACUUM ANALYZE</code> and <code>VACUUM FREEZE</code> take a
+<code>SHARE UPDATE EXCLUSIVE</code> lock: they do <strong>not</strong> block <code>SELECT</code>, <code>INSERT</code>,
+<code>UPDATE</code> or <code>DELETE</code>, but they do contend with DDL such as <code>ALTER TABLE</code>,
+<code>CREATE INDEX</code> and <code>REINDEX</code> on the same table. Only <code>VACUUM FULL</code> blocks reads.</p>
+<p><strong>If you do not own the table.</strong> Only a table's owner (or a superuser) may
+vacuum it. PostgreSQL does not treat this as an error — it emits a warning and
+reports success — so Coruscant checks ownership against the catalog <em>before</em>
+issuing the statement and tells you exactly which tables it could not touch,
+rather than reporting work that did not happen. On managed PostgreSQL
+(Supabase, Neon, RDS, Azure) this is the normal outcome: ask the owning role or
+a superuser to vacuum those tables, or leave them to autovacuum.</p>
 <h3 id="224-health-check-connection-exhaustion">22.4 Health Check — Connection Exhaustion</h3>
 <p><strong>What it detects:</strong> how many backends are connected relative to <code>max_connections</code>, and how many are in the <code>idle in transaction</code> state (which hold locks and prevent autovacuum from running).</p>
 <p><strong>Severity rules:</strong>

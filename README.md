@@ -38,7 +38,7 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 **One-click recovery mode repair:** when Coruscant connects to a PostgreSQL server in standby or recovery mode it automatically detects this, warns you in the status bar, and activates the 🔴 Recovery toolbar button. Opening the dialog shows a live status panel (WAL receive/replay positions, replication delay, server start time, replay-paused flag) that refreshes every 10 seconds. A single **Promote to Primary** button calls `pg_promote()` (PostgreSQL 12+, falling back to `pg_wal_replay_resume()` on older versions) after a confirmation prompt, turning the standby into a primary without leaving the application.
 
-**Database Doctor (🩺):** a one-stop diagnostic and repair panel accessible from the status bar footer whenever connected. Four health checks run in the background — lock contention, table bloat, connection exhaustion, and XID wraparound — each displayed on a colour-coded severity card (green / amber / red). Every card comes with targeted repair buttons: kill the blocking query, VACUUM a bloated table, terminate idle connections, and run VACUUM FREEZE to reset transaction ID age. All repairs require confirmation and execute off the UI thread so the application stays responsive.
+**Database Doctor (🩺):** a one-stop diagnostic and repair panel accessible from the status bar footer whenever connected. Four health checks run in the background — lock contention, table bloat, connection exhaustion, and XID wraparound — each displayed on a colour-coded severity card (green / amber / red). Every card comes with targeted repair buttons: kill the blocking query, VACUUM a bloated table, terminate idle connections, and run VACUUM FREEZE to reset transaction ID age. `VACUUM FULL` is offered separately, selection-only, behind a warning that it locks the table against reads. Because only a table's owner may vacuum it — and PostgreSQL reports a refusal as a warning rather than an error — ownership is checked against the catalog first, so the Doctor reports what it actually did rather than what it attempted. All repairs require confirmation and execute off the UI thread so the application stays responsive.
 
 **Live Database Monitor (📊):** a real-time observability dashboard, also in the status bar footer. It samples `pg_stat_*` on a background thread and auto-refreshes at a selectable interval (2s–60s), presenting ten colour-coded KPI gauges (size, connections vs `max_connections`, cache-hit %, transactions/sec, active queries, uptime, row writes/sec, rows read/sec, blocked sessions, commit ratio), four live sparklines, and ten drill-down tabs (activity, connections, tables, indexes, cache, databases, locks, replication, top queries, settings). Non-modal, so you can keep querying while it runs.
 
@@ -158,27 +158,34 @@ coruscant/
 ├── app.py                   # QApplication factory
 │
 ├── core/                    # Business logic — no Qt except worker.py (a QThread)
-│   ├── connections.py       # Saved profiles, pgAdmin import
-│   ├── database.py          # DatabaseManager (connect, execute, transactions)
+│   ├── connections.py       # Saved profiles, pgAdmin import, Supabase preset
+│   ├── database.py          # DatabaseManager — the only module importing psycopg2
 │   ├── worker.py            # QueryWorker — background QThread
 │   ├── sql.py               # split_statements(), split_statements_with_positions()
+│   ├── doctor.py            # Database Doctor SQL + severity assessment
+│   ├── metrics.py           # Live Monitor SQL + per-second rate computation
 │   ├── script_manager.py   # ScriptKnowledgeGraph, SQLScriptParser, ScriptIngester
 │   ├── qa_engine.py         # QAEngine, QAFinding, QAReport — six schema health checks
 │   └── mind_map_generator.py # generate_mind_map(), _compute_bfs() — D3.js HTML output
 │
 ├── ui/
 │   ├── main_window.py       # MainWindow — coordinator, no business logic
+│   ├── style.py             # Shared Qt stylesheet constants
 │   ├── widgets/
 │   │   ├── editor.py        # SQLEditor (line numbers + autocomplete), EditorTab
 │   │   ├── results.py       # ResultGrid, MessageResult, ExplainResult, ErrorResult
 │   │   └── tab_bar.py       # PinnableTabBar, EditorTabBar
 │   ├── dialogs/
+│   │   ├── about.py         # AboutDialog — version, licence, credits
 │   │   ├── cell_viewer.py   # CellViewerDialog
-│   │   ├── connection.py    # ConnectionDialog
+│   │   ├── connection.py    # ConnectionDialog + SupabasePresetDialog
+│   │   ├── dashboard.py     # DashboardDialog — Live Database Monitor
+│   │   ├── doctor.py        # DatabaseDoctorDialog — health checks and repairs
 │   │   ├── guide.py         # ShortcutGuideDialog
 │   │   ├── message.py       # StyledMessageBox
 │   │   ├── qa_dialog.py     # QADialog — findings table, suppress, export, find scripts
 │   │   ├── query_builder.py # QueryBuilderDialog — visual SELECT builder with joins
+│   │   ├── recovery.py      # RecoveryDialog — standby status, promote to primary
 │   │   └── script_manager_dialog.py  # ScriptManagerDialog
 │   └── panels/
 │       ├── schema.py        # SchemaBrowser + Settings panel + _MindMapWorker + _QAWorker
@@ -200,8 +207,10 @@ Click **Connections** to open the connection manager. Import a pgAdmin JSON expo
 | SSL Mode | Behaviour |
 |---|---|
 | `disable` | Never use SSL |
+| `allow` | Use SSL only if the server requires it |
 | `prefer` | Use SSL if available *(default)* |
-| `require` | Always use SSL |
+| `require` | Always use SSL, without verifying the certificate |
+| `verify-ca` | SSL + verify the certificate against a Certificate Authority |
 | `verify-full` | SSL + verify certificate + hostname |
 
 **Password field:** the password is always treated as a raw string no URI construction, no shell expansion. Passwords containing `$`, `@`, `%`, `&`, `/`, spaces, or any other special character are passed directly to the PostgreSQL driver via keyword argument. Click the **👁** button beside the field to reveal what you typed and verify it before connecting.
@@ -509,16 +518,19 @@ Click the **🩺** icon at the bottom-right of the main window, then click **�
 
 Each card exposes targeted repair buttons — all require a confirmation prompt before executing:
 
-- **Kill Blocker** — terminates the blocking backend via `pg_terminate_backend(pid)`. Select the blocking row in the Locks table first.
+- **Kill Selected Blocker** — terminates the blocking backend via `pg_terminate_backend(pid)`. Select the blocking row in the Locks table first.
 - **VACUUM Selected** — runs `VACUUM ANALYZE` on the highlighted bloated table.
 - **VACUUM All** — runs `VACUUM ANALYZE` on every table shown in the Bloat list.
+- **VACUUM FULL…** — runs `VACUUM FULL` on the selected tables only. **This is not the same as VACUUM.** It takes an `ACCESS EXCLUSIVE` lock and rewrites each table, so every query against it blocks — including `SELECT` — for the duration, and roughly twice the table's size must be free on disk. Plain VACUUM reclaims the same dead rows for re-use without any of that; use FULL only to return disk space to the operating system, and not outside a maintenance window. There is deliberately no "FULL All".
 - **Terminate Idle** — terminates all backends in the `idle` state (excludes the current session).
 - **Terminate Idle-in-Txn** — terminates all `idle in transaction` backends, which are the most dangerous for connection exhaustion.
 - **VACUUM FREEZE** — runs `VACUUM FREEZE` on the entire connected database to reset transaction ID age. This is the standard remedy for approaching XID wraparound.
 
 > **Note:** VACUUM FREEZE operates on the currently connected database only. If the most critical database in the wraparound list is a different database, reconnect to it first.
 
-> **Managed PostgreSQL:** the repairs above need privileges a hosted tenant role usually lacks database-wide `VACUUM FREEZE` requires ownership of the tables it touches, and terminating another role's backend requires superuser rights. Expect permission errors on Supabase, Neon, RDS, and Azure. The four health checks are read-only and work normally.
+> **Locking:** plain `VACUUM`, `VACUUM ANALYZE` and `VACUUM FREEZE` take a `SHARE UPDATE EXCLUSIVE` lock. They do not block `SELECT`, `INSERT`, `UPDATE` or `DELETE`, but they do contend with DDL — `ALTER TABLE`, `CREATE INDEX` and `REINDEX` — on the same table. Only `VACUUM FULL` blocks reads.
+
+> **Managed PostgreSQL:** these repairs need privileges a hosted tenant role usually lacks — only a table's owner may vacuum it, and terminating another role's backend requires superuser rights. Coruscant checks ownership against the catalog before issuing a VACUUM and reports exactly which tables it could not touch, rather than reporting success for work the server declined. The four health checks are read-only and work normally.
 
 All repair operations run in a background thread. The diagnosis re-runs automatically after each repair so you see the updated state immediately.
 

@@ -219,3 +219,75 @@ def test_test_suite_reads_files_with_explicit_encoding():
             elif name == "open" and not kwarg(node, "encoding") and not binary_mode(node):
                 offenders.append(f"{py.name}:{node.lineno}: open() without encoding=")
     assert not offenders, "text read without an explicit encoding:\n  " + "\n  ".join(offenders)
+
+
+# ---------------------------------------------------------------------------
+# Documentation that describes the code must keep up with it
+# ---------------------------------------------------------------------------
+
+class TestDocsMatchTheCode:
+    """
+    Prose drifts silently. These check the parts of the documentation that make
+    checkable claims about the source.
+
+    Both caught real omissions when written: the README's architecture tree was
+    missing six modules — including `core/doctor.py`, `core/metrics.py` and
+    `ui/dialogs/dashboard.py`, i.e. the Database Doctor, the Live Monitor and
+    Recovery Mode — and `VACUUM FULL`, the single most destructive action in
+    the application, appeared in neither document.
+    """
+
+    def test_architecture_tree_lists_every_module(self):
+        pkg = _ROOT / "coruscant"
+        readme = _read(_README)
+        start = readme.index("## Architecture")
+        end = readme.index("## Connecting to a Database", start)
+        tree = readme[start:end]
+
+        # Counts, not a set: two modules share the basename doctor.py
+        # (core/doctor.py and ui/dialogs/doctor.py). Comparing sets let one be
+        # deleted from the tree while the other kept the check green — this
+        # test missed exactly that when first written.
+        from collections import Counter
+
+        listed = Counter(re.findall(r"([a-z_0-9]+\.py)", tree))
+        actual = Counter(
+            p.name for p in pkg.rglob("*.py")
+            if "__pycache__" not in p.parts and p.name != "__init__.py"
+        )
+        missing = {
+            name: (actual[name], listed[name])
+            for name in actual
+            if listed[name] < actual[name]
+        }
+        assert not missing, (
+            "module(s) missing from the README architecture tree "
+            "(name: on disk vs listed):\n  "
+            + "\n  ".join(f"{n}: {a} vs {l}" for n, (a, l) in sorted(missing.items()))
+        )
+
+    def test_doctor_repair_buttons_are_documented(self):
+        """
+        Every repair the Doctor offers must be described somewhere. A button
+        that acts on a production database and appears in no manual is the
+        worst kind of undocumented feature.
+        """
+        source = (_ROOT / "coruscant" / "ui" / "dialogs" / "doctor.py").read_text(
+            encoding="utf-8"
+        )
+        buttons = set(
+            re.findall(r'\("([^"]+)",\s*"(?:repair|warn|danger)_btn', source)
+        )
+        assert buttons, "found no repair buttons to check — has the spec format changed?"
+
+        readme, manual = _read(_README), _read(_MANUAL)
+        undocumented = []
+        for label in sorted(buttons):
+            # Trailing ellipsis is a UI convention for "opens a dialog", not
+            # part of the name a document would use.
+            name = label.rstrip("… .")
+            if name not in readme and name not in manual:
+                undocumented.append(name)
+        assert not undocumented, (
+            "Doctor repair button(s) documented nowhere:\n  " + "\n  ".join(undocumented)
+        )

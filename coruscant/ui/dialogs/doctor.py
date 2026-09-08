@@ -197,22 +197,23 @@ class _DiagnosisWorker(QThread):
         self.finished.emit(results)
 
 
-def _vacuum_report(db, targets: list[tuple[str, str]]) -> str:
+def _vacuum_report(db, targets: list[tuple[str, str]], full: bool = False) -> str:
     """
-    VACUUM ANALYZE each (schema, table) and describe what actually happened.
+    VACUUM each (schema, table) and describe what actually happened.
 
     PostgreSQL skips a table you do not own with a WARNING rather than an
     error, so a loop that only watches for exceptions will report success
     having vacuumed nothing.  Count the skips and say so.
     """
+    label = "VACUUM FULL" if full else "VACUUM ANALYZE"
     skipped: list[str] = []
     for schema, table in targets:
-        if db.vacuum_table(schema, table, full=False, analyze=True):
+        if db.vacuum_table(schema, table, full=full, analyze=not full):
             skipped.append(f"{schema}.{table}")
 
     done = len(targets) - len(skipped)
     if not skipped:
-        return f"VACUUM ANALYZE complete on {done} table(s)."
+        return f"{label} complete on {done} table(s)."
 
     listing = "\n".join(f"  • {n}" for n in skipped[:10])
     if len(skipped) > 10:
@@ -225,7 +226,7 @@ def _vacuum_report(db, targets: list[tuple[str, str]]) -> str:
                 f"a table.")
     else:
         n = len(skipped)
-        head = (f"VACUUM ANALYZE completed on {done} of {len(targets)} table(s).\n\n"
+        head = (f"{label} completed on {done} of {len(targets)} table(s).\n\n"
                 f"{n} {'was' if n == 1 else 'were'} skipped because you do not "
                 f"own {'it' if n == 1 else 'them'}:")
     return (f"{head}\n\n{listing}\n\n"
@@ -399,6 +400,7 @@ class DatabaseDoctorDialog(QDialog):
             [
                 ("VACUUM Selected",  "repair_btn", self._vacuum_selected),
                 ("VACUUM All",       "warn_btn",   self._vacuum_all),
+                ("VACUUM FULL…",     "danger_btn", self._vacuum_full_selected),
             ],
         ))
         cards_layout.addWidget(self._build_card(
@@ -744,7 +746,11 @@ class DatabaseDoctorDialog(QDialog):
         names = ", ".join(f"{s}.{t}" for s, t in targets)
         if not self._confirm(
             "VACUUM Tables",
-            f"Run VACUUM ANALYZE on:\n{names}\n\nThis is safe and non-blocking."
+            f"Run VACUUM ANALYZE on:\n{names}\n\n"
+            "Reads and writes continue normally. VACUUM takes a SHARE UPDATE "
+            "EXCLUSIVE lock, so it does not block SELECT, INSERT, UPDATE or "
+            "DELETE — but it does wait for, and hold up, DDL such as "
+            "ALTER TABLE, CREATE INDEX and REINDEX on the same table."
         ):
             return
 
@@ -754,6 +760,69 @@ class DatabaseDoctorDialog(QDialog):
         def _done(msg: str) -> None:
             from coruscant.ui.dialogs.message import StyledMessageBox
             StyledMessageBox.information(self, "VACUUM Complete", msg)
+
+        self._start_repair(_do, _done)
+
+    def _vacuum_full_selected(self) -> None:
+        """
+        VACUUM FULL the selected tables, behind a deliberately heavy warning.
+
+        Unlike plain VACUUM this takes an ACCESS EXCLUSIVE lock and rewrites
+        the table, so it blocks *everything* — including SELECT — for the
+        duration, and needs roughly twice the table's size in free disk while
+        it runs.  Selection-only on purpose: there is no "FULL All" button,
+        because doing this to every bloated table at once is almost never what
+        someone means.
+        """
+        card = self._cards["bloat"]
+        rows = list({idx.row() for idx in card.table.selectedIndexes()})
+        if not rows:
+            from coruscant.ui.dialogs.message import StyledMessageBox
+            StyledMessageBox.information(
+                self, "No Selection",
+                "Select one or more rows in the Table Bloat list.\n\n"
+                "VACUUM FULL is per-table by design — it locks each table "
+                "completely while it runs."
+            )
+            return
+
+        targets = []
+        for r in rows:
+            schema = (card.table.item(r, 0) or QTableWidgetItem("")).text()
+            table  = (card.table.item(r, 1) or QTableWidgetItem("")).text()
+            if schema and table:
+                targets.append((schema, table))
+        if not targets:
+            return
+
+        names = "\n".join(f"  • {s}.{t}" for s, t in targets)
+        if not self._confirm(
+            "VACUUM FULL — locks the table completely",
+            f"VACUUM FULL on:\n{names}\n\n"
+            "⚠  This is not the same as VACUUM.\n\n"
+            "VACUUM FULL takes an ACCESS EXCLUSIVE lock and rewrites the table "
+            "from scratch. For as long as it runs:\n\n"
+            "  • every query against the table blocks — including SELECT\n"
+            "  • the application will appear to hang, not merely slow down\n"
+            "  • roughly twice the table's size must be free on disk\n"
+            "  • it cannot be undone partway; cancelling rolls the whole "
+            "rewrite back\n\n"
+            "On a large table this can take minutes to hours. Plain VACUUM "
+            "reclaims the same dead rows for re-use without any of this — use "
+            "VACUUM FULL only when you must return disk space to the operating "
+            "system.\n\n"
+            "Do not run this against a live production system outside a "
+            "maintenance window.\n\n"
+            "Proceed?"
+        ):
+            return
+
+        def _do() -> str:
+            return _vacuum_report(self._db, targets, full=True)
+
+        def _done(msg: str) -> None:
+            from coruscant.ui.dialogs.message import StyledMessageBox
+            StyledMessageBox.information(self, "VACUUM FULL Complete", msg)
 
         self._start_repair(_do, _done)
 
@@ -772,7 +841,10 @@ class DatabaseDoctorDialog(QDialog):
         if not self._confirm(
             "VACUUM All Bloated Tables",
             f"Run VACUUM ANALYZE on all {len(targets)} bloated table(s)?\n\n"
-            "This is safe and non-blocking, but may take a while on large tables."
+            "Reads and writes continue normally — VACUUM does not block SELECT, "
+            "INSERT, UPDATE or DELETE. It does contend with DDL (ALTER TABLE, "
+            "CREATE INDEX, REINDEX) on the same table, and may take a while on "
+            "large tables."
         ):
             return
 

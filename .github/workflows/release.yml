@@ -13,6 +13,28 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+
+    # A real PostgreSQL for the live SQL smoke tests. Every other database test
+    # mocks psycopg2, and a mock cursor accepts any string — which is how a
+    # query selecting a non-existent column shipped and broke the Table Bloat
+    # health check while the whole suite stayed green.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: coruscant_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      CORUSCANT_TEST_DSN: postgresql://postgres:postgres@localhost:5432/coruscant_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +49,14 @@ jobs:
 
       - name: Run tests
         run: pytest
+
+      - name: Confirm the live SQL tests actually ran
+        # Without this, a broken DSN would silently skip them and the job would
+        # still pass — reintroducing exactly the blind spot they exist to close.
+        run: pytest tests/test_live_sql.py -q --no-header -p no:cacheprovider
+             | tee /tmp/live.txt
+             && grep -qE "[0-9]+ passed" /tmp/live.txt
+             && ! grep -qE "^[0-9]+ skipped" /tmp/live.txt
 
 
   build-windows:

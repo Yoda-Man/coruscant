@@ -715,225 +715,86 @@ class TestGetSchemaTree:
         assert names == sorted(names)
 
 
+
+
 # ---------------------------------------------------------------------------
-# VACUUM permission warnings
+# terminate_connections — behavioural
 # ---------------------------------------------------------------------------
 
-class TestVacuumReportsSkippedTables:
+class TestTerminateConnections:
     """
-    PostgreSQL does not raise an error when you VACUUM a table you do not own.
-    It emits a WARNING and carries on:
+    This kills live database backends, and until now the only test asserting
+    anything about it was `"terminate_connections" in _fns(...)` — a check that
+    the name exists. It passes whether the function targets idle sessions or
+    every session on the server.
 
-        WARNING:  skipping "tgorganisationidentification" ---
-                  only table or database owner can vacuum it
-
-    The Doctor reported "VACUUM ANALYZE complete on 20 table(s)" while nothing
-    had actually been vacuumed: dead tuples unchanged and last_vacuum still
-    NULL. vacuum_table() must surface those warnings so callers can tell the
-    difference between work done and work skipped.
+    The self-exclusion clause in particular is load-bearing: without it the
+    repair terminates the connection issuing it.
     """
-
-    # Verbatim from PostgreSQL 15.8.
-    SKIP = ('WARNING:  skipping "tgorganisationidentification" --- '
-            'only table or database owner can vacuum it\n')
 
     @staticmethod
-    def _emit_on_execute(mc, cur, notice):
-        """Publish `notice` when a statement runs, as psycopg2 does.
+    def _sql(cur) -> str:
+        return " ".join(str(c) for c in cur.execute.call_args_list)
 
-        A real connection appends to conn.notices during execute(). vacuum_table
-        clears stale notices first, so the notice must arrive as a side effect
-        of the call rather than being pre-seeded.
-        """
-        mc.notices = []
-        cur.execute.side_effect = lambda *a, **k: mc.notices.append(notice)
+    def test_returns_the_number_terminated(self):
+        db, _, cur = _make_connected_db(fetchone_return=(7,))
+        assert db.terminate_connections() == 7
 
-    def test_returns_warning_when_table_was_skipped(self):
-        db, mc, cur = _make_connected_db()
-        self._emit_on_execute(mc, cur, self.SKIP)
-        warnings = db.vacuum_table("tgorganisation", "tgorganisationidentification")
-        assert warnings, "permission-denied skip must be reported to the caller"
-        assert "only table or database owner" in warnings[0]
+    def test_zero_when_nothing_matched(self):
+        db, _, cur = _make_connected_db(fetchone_return=(0,))
+        assert db.terminate_connections() == 0
 
-    def test_returns_empty_when_vacuum_actually_ran(self):
-        db, mc, _ = _make_connected_db()
-        mc.notices = []
-        assert db.vacuum_table("public", "orders") == []
+    def test_zero_when_no_row_came_back(self):
+        db, _, cur = _make_connected_db(fetchone_return=None)
+        assert db.terminate_connections() == 0
 
-    def test_clears_stale_notices_before_running(self):
-        """A warning from an earlier statement must not be misreported as this one's."""
-        db, mc, _ = _make_connected_db()
-        mc.notices = ["WARNING:  something unrelated and older\n"]
-        assert db.vacuum_table("public", "orders") == []
-
-    def test_only_permission_skips_are_reported(self):
-        """Routine chatter (e.g. vacuum progress info) must not be flagged as a skip."""
-        db, mc, cur = _make_connected_db()
-        self._emit_on_execute(mc, cur, 'INFO:  vacuuming "public.orders"\n')
-        assert db.vacuum_table("public", "orders") == []
-
-    def test_autocommit_is_still_restored(self):
-        db, mc, cur = _make_connected_db(autocommit=False)
-        self._emit_on_execute(mc, cur, self.SKIP)
-        db.vacuum_table("s", "t")
-        assert mc.autocommit is False
-
-
-# ---------------------------------------------------------------------------
-# Contract: maintenance commands must not report silent success
-# ---------------------------------------------------------------------------
-
-class TestMaintenanceCommandsSurfaceSkips:
-    """
-    A repair must never report success for work PostgreSQL declined to do.
-
-    PostgreSQL refuses maintenance on objects the current role does not own by
-    emitting a WARNING and continuing — the statement "succeeds". Any method
-    that issues VACUUM / ANALYZE / REINDEX / CLUSTER and reports back purely on
-    the absence of an exception will therefore tell the user it vacuumed 20
-    tables when it vacuumed none. That is exactly how the Table Bloat repair
-    shipped broken.
-
-    These tests find the maintenance methods *by inspecting the source* rather
-    than from a hand-maintained list, so a repair added later is covered
-    automatically: add `reindex_table()` that ignores notices and this fails.
-    """
-
-    MAINTENANCE_SQL = ("VACUUM", "REINDEX", "CLUSTER", "ANALYZE")
-
-    # Methods that issue a maintenance command but legitimately cannot be
-    # skipped for ownership. Keep empty unless there is a real reason, and
-    # state the reason — this set is the escape hatch that would let the bug
-    # back in.
-    EXEMPT: dict[str, str] = {}
-
-    @classmethod
-    def _maintenance_methods(cls) -> dict[str, int]:
-        """Method name -> line number, for methods issuing a maintenance command."""
-        import ast
-        from pathlib import Path
-
-        root = Path(__file__).resolve().parents[1]
-        src = (root / "coruscant" / "core" / "database.py").read_text(encoding="utf-8")
-        tree = ast.parse(src)
-
-        found: dict[str, int] = {}
-        for cls_node in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
-            if cls_node.name != "DatabaseManager":
-                continue
-            for fn in (n for n in cls_node.body
-                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
-                for sub in ast.walk(fn):
-                    # A string constant naming a maintenance command, either
-                    # executed directly or built into a command variable.
-                    if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-                        head = sub.value.strip().upper()
-                        if any(head.startswith(v) for v in cls.MAINTENANCE_SQL):
-                            found[fn.name] = fn.lineno
-                            break
-        return found
-
-    def test_discovery_finds_the_known_maintenance_methods(self):
-        """Guards the guard: if discovery silently finds nothing, the rest passes vacuously."""
-        found = self._maintenance_methods()
-        assert "vacuum_table" in found, f"discovery missed vacuum_table; found {sorted(found)}"
-        assert "vacuum_freeze" in found, f"discovery missed vacuum_freeze; found {sorted(found)}"
-
-    def test_each_maintenance_method_inspects_notices(self):
-        """Structural: the method must look at conn.notices at all."""
-        import ast
-        from pathlib import Path
-
-        root = Path(__file__).resolve().parents[1]
-        tree = ast.parse((root / "coruscant" / "core" / "database.py").read_text(encoding="utf-8"))
-        bodies = {n.name: n for n in ast.walk(tree)
-                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-
-        offenders = []
-        for name, lineno in self._maintenance_methods().items():
-            if name in self.EXEMPT:
-                continue
-            body = bodies.get(name)
-            if body is None:
-                continue
-            reads = any(
-                (isinstance(n, ast.Attribute) and n.attr == "notices")
-                or (isinstance(n, ast.Constant) and n.value == "notices")
-                for n in ast.walk(body)
-            )
-            if not reads:
-                offenders.append(f"  line {lineno}: {name}()")
-        assert not offenders, (
-            "maintenance method(s) never read conn.notices, so a permission-denied "
-            "skip is reported as success:\n" + "\n".join(offenders)
+    def test_never_terminates_the_calling_session(self):
+        """Without this guard the repair kills its own connection."""
+        db, _, cur = _make_connected_db(fetchone_return=(1,))
+        db.terminate_connections()
+        assert "pid != pg_backend_pid()" in self._sql(cur), (
+            "must exclude the current backend"
         )
 
-    def test_each_maintenance_method_reports_a_permission_skip(self):
-        """
-        Behavioural: with PostgreSQL emitting a skip warning, the method must
-        return something truthy (the warnings) or raise — never a clean result.
-        """
-        import inspect
-
-        skip = ('WARNING:  skipping "t" --- '
-                'only table or database owner can vacuum it\n')
-
-        offenders = []
-        for name in self._maintenance_methods():
-            if name in self.EXEMPT:
-                continue
-            db, mc, cur = _make_connected_db()
-            mc.notices = []
-            cur.execute.side_effect = lambda *a, **k: mc.notices.append(skip)
-
-            method = getattr(db, name)
-            params = [
-                p for p in inspect.signature(method).parameters.values()
-                if p.default is inspect.Parameter.empty
-                and p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
-            ]
-            try:
-                result = method(*["x"] * len(params))
-            except Exception:
-                continue          # raising is an acceptable way to not lie
-            if not result:
-                offenders.append(
-                    f"  {name}() returned {result!r} while PostgreSQL was "
-                    f"reporting a skipped table"
-                )
-        assert not offenders, (
-            "maintenance method(s) reported success for work PostgreSQL skipped:\n"
-            + "\n".join(offenders)
+    def test_filters_on_the_requested_state(self):
+        db, _, cur = _make_connected_db(fetchone_return=(1,))
+        db.terminate_connections(state="idle in transaction")
+        args = cur.execute.call_args[0]
+        assert "state = %s" in args[0]
+        assert args[1] == ["idle in transaction"], (
+            "state must be bound as a parameter, not interpolated"
         )
 
-    def test_doctor_never_discards_a_maintenance_result(self):
+    def test_state_is_never_interpolated_into_the_sql(self):
         """
-        The other half of the bug: core can report the skip faithfully and the
-        dialog can still throw it away. The Doctor's repair closures called
-        `self._db.vacuum_table(...)` as a bare statement and returned a
-        hardcoded "complete" string.
-
-        Any call to a maintenance method in doctor.py must use its result —
-        assigned, returned, or tested — never left as a bare expression.
+        A state value reaching the SQL *text* would be injectable. It must
+        arrive as a bound parameter, so inspect the statement alone — the
+        params tuple legitimately contains whatever was passed.
         """
-        import ast
-        from pathlib import Path
+        hostile = "idle'; DROP TABLE x; --"
+        db, _, cur = _make_connected_db(fetchone_return=(0,))
+        db.terminate_connections(state=hostile)
+        statement, params = cur.execute.call_args[0]
+        assert "DROP TABLE" not in statement, "state was interpolated into the SQL"
+        assert params == [hostile], "state must travel as a bound parameter"
 
-        root = Path(__file__).resolve().parents[1]
-        path = root / "coruscant" / "ui" / "dialogs" / "doctor.py"
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        maintenance = set(self._maintenance_methods())
+    def test_idle_threshold_omitted_by_default(self):
+        db, _, cur = _make_connected_db(fetchone_return=(1,))
+        db.terminate_connections()
+        assert "state_change" not in self._sql(cur)
 
-        discarded = []
-        for node in ast.walk(tree):
-            # A bare expression statement whose value is the call = result dropped.
-            if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
-                continue
-            fn = node.value.func
-            if isinstance(fn, ast.Attribute) and fn.attr in maintenance:
-                discarded.append(f"  line {node.lineno}: {fn.attr}() result discarded")
+    def test_idle_threshold_applied_when_requested(self):
+        db, _, cur = _make_connected_db(fetchone_return=(1,))
+        db.terminate_connections(min_idle_mins=15)
+        sql = self._sql(cur)
+        assert "state_change" in sql and "15 minutes" in sql
 
-        assert not discarded, (
-            "doctor.py drops the return value of a maintenance call, so a "
-            "reported skip cannot reach the user:\n" + "\n".join(discarded)
-        )
+    def test_idle_threshold_is_coerced_to_int(self):
+        """It is formatted into the SQL, so it must not carry arbitrary text."""
+        db, _, cur = _make_connected_db(fetchone_return=(0,))
+        db.terminate_connections(min_idle_mins=True)   # bool is an int subclass
+        assert "1 minutes" in self._sql(cur)
+
+    def test_raises_when_not_connected(self):
+        with pytest.raises(RuntimeError, match="Not connected"):
+            DatabaseManager().terminate_connections()

@@ -34,19 +34,34 @@ log = logging.getLogger(__name__)
 # SQLSTATE 57014 — sent by PostgreSQL when pg_cancel_backend() fires.
 PGCODE_QUERY_CANCELED = "57014"
 
-# PostgreSQL reports a VACUUM it refused to perform as a WARNING, not an error,
-# and still reports overall success.  Matched on the stable parts of the message
-# ("skipping" plus the ownership phrase) rather than the whole string, which
-# differs between the VACUUM and ANALYZE variants.
-def _skip_warnings(notices: list) -> list[str]:
-    """Return the notices that report a table being skipped for lack of rights."""
-    out = []
-    for n in notices:
-        text = str(n).strip()
-        low = text.lower()
-        if "skipping" in low and ("can vacuum it" in low or "can analyze it" in low):
-            out.append(text)
-    return out
+# Can the current role actually maintain this table?
+#
+# PostgreSQL refuses maintenance on a table you do not own by emitting a
+# WARNING and reporting overall success, so the outcome has to be established
+# some other way.  Reading the warning text does not work: those messages are
+# translated according to the server's lc_messages, so matching on English
+# words silently stops detecting skips on a non-English server — and fails
+# open, back to reporting success for work that never happened.
+#
+# This asks the catalog instead, which is locale-independent:
+#   pg_has_role(..., 'USAGE')  covers direct ownership and membership of the
+#                              owning role
+#   rolsuper                   superusers may vacuum anything
+#   pg_maintain                PostgreSQL 16+ grants maintenance without
+#                              ownership; absent on older servers, hence the
+#                              to_regrole guard
+CAN_MAINTAIN_SQL = """
+SELECT pg_catalog.pg_has_role(current_user, c.relowner, 'USAGE')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                WHERE rolname = current_user AND rolsuper)
+    OR (pg_catalog.to_regrole('pg_maintain') IS NOT NULL
+        AND pg_catalog.pg_has_role(current_user,
+                                   pg_catalog.to_regrole('pg_maintain'),
+                                   'USAGE'))
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = %s AND c.relname = %s
+"""
 
 
 class QueryResult:
@@ -386,19 +401,25 @@ class DatabaseManager:
         switches the connection to autocommit mode regardless of the current
         setting and restores it afterward.
 
-        Returns a list of skip warnings, empty when the table was actually
-        vacuumed.  PostgreSQL does *not* raise an error when you VACUUM a table
-        you do not own — it emits
+        Returns a list of reasons the table was *not* vacuumed — empty means
+        the work was done.  PostgreSQL does not raise an error when you VACUUM
+        a table you do not own; it warns and reports success, so ownership is
+        checked against the catalog first (see CAN_MAINTAIN_SQL) rather than
+        inferred from the warning text, which is translated per lc_messages.
 
-            WARNING:  skipping "x" --- only table or database owner can vacuum it
-
-        and reports success.  Callers that treat "no exception" as "work done"
-        will tell the user 20 tables were vacuumed when none were, so the
-        warning is returned rather than discarded.
+        `full=True` issues VACUUM FULL, which takes an ACCESS EXCLUSIVE lock
+        and rewrites the table — callers must warn the user before using it.
 
         Raises RuntimeError if not connected, psycopg2.Error on failure.
         """
         self._ensure_connected()
+
+        if not self.can_maintain(schema, table):
+            reason = (f'{schema}.{table}: not the owner — only the table or '
+                      f'database owner can vacuum a table')
+            log.warning("VACUUM skipped  %s", reason)
+            return [reason]
+
         old_ac = self._conn.autocommit  # type: ignore[union-attr]
         self._conn.autocommit = True    # type: ignore[union-attr]
         try:
@@ -409,23 +430,27 @@ class DatabaseManager:
             if analyze:
                 opts.append("ANALYZE")
             cmd = f"VACUUM ({', '.join(opts)}) {qual}" if opts else f"VACUUM {qual}"
-            # Drop anything left by an earlier statement so stale warnings are
-            # not attributed to this table.
-            notices = getattr(self._conn, "notices", None)
-            if notices is not None:
-                del notices[:]
             with self._conn.cursor() as cur:  # type: ignore[union-attr]
                 cur.execute(cmd)
-            skipped = _skip_warnings(getattr(self._conn, "notices", []) or [])
-            if skipped:
-                log.warning("VACUUM skipped  schema=%s  table=%s  reason=%s",
-                            schema, table, skipped[0])
-            else:
-                log.info("VACUUM complete  schema=%s  table=%s  full=%s  analyze=%s",
-                         schema, table, full, analyze)
-            return skipped
+            log.info("VACUUM complete  schema=%s  table=%s  full=%s  analyze=%s",
+                     schema, table, full, analyze)
+            return []
         finally:
             self._conn.autocommit = old_ac  # type: ignore[union-attr]
+
+    def can_maintain(self, schema: str, table: str) -> bool:
+        """
+        True when the current role may VACUUM/ANALYZE this table.
+
+        Locale-independent: asks the catalog rather than reading a translated
+        warning.  Unknown tables return True so the caller still issues the
+        statement and gets PostgreSQL's own error rather than a made-up one.
+        """
+        self._ensure_connected()
+        with self._conn.cursor() as cur:  # type: ignore[union-attr]
+            cur.execute(CAN_MAINTAIN_SQL, (schema, table))
+            row = cur.fetchone()
+        return True if row is None else bool(row[0])
 
     def terminate_connections(
         self,
@@ -468,30 +493,59 @@ class DatabaseManager:
         Runs with autocommit=True (required for VACUUM).
         Can be slow on large databases; run off the UI thread.
 
-        Returns the skip warnings for tables the current role does not own —
-        database-wide VACUUM silently passes over those (see vacuum_table).
-        An empty list means every table was processed.
+        Returns the names of tables the current role may not maintain, which a
+        database-wide VACUUM silently passes over.  Empty means every table was
+        processed.  Determined from the catalog before running, for the same
+        locale reason described on vacuum_table().
 
         Raises RuntimeError if not connected, psycopg2.Error on failure.
         """
         self._ensure_connected()
+        unowned = self.unmaintainable_tables()
+
         old_ac = self._conn.autocommit  # type: ignore[union-attr]
         self._conn.autocommit = True    # type: ignore[union-attr]
         try:
-            notices = getattr(self._conn, "notices", None)
-            if notices is not None:
-                del notices[:]
             with self._conn.cursor() as cur:  # type: ignore[union-attr]
                 cur.execute("VACUUM FREEZE")
-            skipped = _skip_warnings(getattr(self._conn, "notices", []) or [])
-            if skipped:
+            if unowned:
                 log.warning("VACUUM FREEZE skipped %d table(s) not owned by the "
-                            "current role", len(skipped))
+                            "current role", len(unowned))
             else:
                 log.info("VACUUM FREEZE complete")
-            return skipped
+            return unowned
         finally:
             self._conn.autocommit = old_ac  # type: ignore[union-attr]
+
+    def unmaintainable_tables(self) -> list[str]:
+        """
+        Return "schema.table" for every user table this role may not vacuum.
+
+        Used to report honestly on database-wide VACUUM, which skips such
+        tables with a warning and still reports success.
+        """
+        self._ensure_connected()
+        sql = """
+            SELECT n.nspname || '.' || c.relname
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r', 'm', 'p')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND n.nspname NOT LIKE 'pg_toast%'
+              AND NOT (
+                    pg_catalog.pg_has_role(current_user, c.relowner, 'USAGE')
+                 OR EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                             WHERE rolname = current_user AND rolsuper)
+                 OR (pg_catalog.to_regrole('pg_maintain') IS NOT NULL
+                     AND pg_catalog.pg_has_role(current_user,
+                                                pg_catalog.to_regrole('pg_maintain'),
+                                                'USAGE'))
+              )
+            ORDER BY 1
+        """
+        with self._conn.cursor() as cur:  # type: ignore[union-attr]
+            cur.execute(sql)
+            return [r[0] for r in cur.fetchall()]
 
     # ------------------------------------------------------------------ #
     #  Recovery mode                                                       #

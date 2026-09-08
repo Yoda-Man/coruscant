@@ -1,5 +1,45 @@
 # Changelog
 
+### 1.1.2
+
+**Fixed — Database Doctor reported VACUUM success having vacuumed nothing**
+
+The Table Bloat card's **VACUUM Selected** and **VACUUM All** buttons reported
+"VACUUM ANALYZE complete on 20 table(s)" while no table was touched. Reconnecting
+showed the same 20 bloated tables, with `Last Vacuum` still reading `Never`.
+
+PostgreSQL does not raise an error when you VACUUM a table you do not own. It emits
+a warning and continues, reporting overall success:
+
+```
+WARNING:  skipping "tgorganisationidentification" --- only table or database owner can vacuum it
+```
+
+`vacuum_table()` treated "no exception raised" as "work done", and nothing in the
+codebase read `conn.notices`, so every skip was invisible to the application. The
+behaviour was reproduced against PostgreSQL 15.8 with a non-owning, non-superuser
+role: the call returns normally, the warning is emitted, and both `n_dead_tup` and
+`last_vacuum` are unchanged.
+
+`vacuum_table()` and `vacuum_freeze()` now clear stale notices before running,
+then return any ownership-skip warnings. The Doctor counts them and reports what
+actually happened — everything skipped, partially completed, or fully completed —
+naming the affected tables and pointing at the owning role or a superuser.
+
+This surfaces the condition rather than working around it. A non-owner still cannot
+vacuum those tables; it is no longer told otherwise. Note that `pg_maintain`, which
+grants maintenance rights without ownership, is PostgreSQL 16+; on earlier servers
+ownership or superuser remains the only route.
+
+Five tests cover the new behaviour, including that stale notices from an earlier
+statement are not misattributed and that routine `INFO` chatter is not mistaken for
+a skip.
+
+**Housekeeping**
+- Version bumped to 1.1.2 across the package, `main.py`, `build_windows.bat`,
+  `distribution/coruscant.spec`, `README.md`, `docs/USER_MANUAL.md`, and the version test.
+- `docs/USER_MANUAL.html` regenerated from the Markdown.
+
 ### 1.1.1
 
 A maintenance release. Every change here is to the build script, the test

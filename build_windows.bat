@@ -2,7 +2,7 @@
 setlocal
 
 echo ============================================================
-echo  Coruscant v1.1.1 - Windows Build
+echo  Coruscant v1.1.2 - Windows Build
 echo ============================================================
 
 :: Move to the project root (same folder as this script)

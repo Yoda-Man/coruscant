@@ -174,54 +174,96 @@ def test_can_maintain_answers_for_a_table_we_own(seeded):
     assert row[0] is True, "expected the creating role to be allowed to vacuum"
 
 
-def test_can_maintain_refuses_a_table_owned_by_someone_else(seeded):
+@pytest.fixture(scope="module")
+def unprivileged(seeded):
     """
-    The real bug, end to end: a table owned by another role must be reported as
-    un-maintainable *before* a VACUUM is issued.
+    A second connection as a non-superuser that owns nothing.
+
+    CI connects as `postgres`, a superuser who may vacuum anything — so the
+    refusal path, which is the whole point of these tests, would never execute.
+    This creates a deliberately powerless role and connects as it, so the
+    original bug is reproduced against a real server on every run.
     """
-    from coruscant.core.database import CAN_MAINTAIN_SQL
+    params = psycopg2.extensions.parse_dsn(DSN)
+    if not params.get("password"):
+        pytest.skip("need a password in the DSN to open a second connection")
 
     with seeded.cursor() as cur:
         cur.execute("""
             DO $$
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'smoke_other') THEN
-                    CREATE ROLE smoke_other NOLOGIN;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'smoke_powerless') THEN
+                    CREATE ROLE smoke_powerless LOGIN PASSWORD 'smoke_pw';
                 END IF;
             END $$;
         """)
-        cur.execute("CREATE TABLE IF NOT EXISTS smoke.foreign_owned (id int)")
-        cur.execute("ALTER TABLE smoke.foreign_owned OWNER TO smoke_other")
+        cur.execute("GRANT USAGE ON SCHEMA smoke TO smoke_powerless")
+        cur.execute("GRANT SELECT ON ALL TABLES IN SCHEMA smoke TO smoke_powerless")
+        cur.execute(f"GRANT CONNECT ON DATABASE {params['dbname']} TO smoke_powerless")
 
+    low = dict(params, user="smoke_powerless", password="smoke_pw")
+    conn = psycopg2.connect(**low)
+    conn.autocommit = True
+    yield conn
+    conn.close()
+
+
+def test_can_maintain_approves_a_table_the_role_owns(seeded):
+    from coruscant.core.database import CAN_MAINTAIN_SQL
+    with seeded.cursor() as cur:
+        cur.execute(CAN_MAINTAIN_SQL, ("smoke", "parent"))
+        assert cur.fetchone()[0] is True
+
+
+def test_can_maintain_refuses_a_table_owned_by_someone_else(unprivileged):
+    """
+    The real bug, end to end: a table owned by another role must be reported as
+    un-maintainable *before* any VACUUM is issued.
+    """
+    from coruscant.core.database import CAN_MAINTAIN_SQL
+
+    with unprivileged.cursor() as cur:
         cur.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
-        if cur.fetchone()[0]:
-            pytest.skip("connected as a superuser, which may vacuum anything")
+        assert cur.fetchone()[0] is False, "fixture must not be a superuser"
 
-        cur.execute(CAN_MAINTAIN_SQL, ("smoke", "foreign_owned"))
+        cur.execute(CAN_MAINTAIN_SQL, ("smoke", "parent"))
         assert cur.fetchone()[0] is False, (
             "a table owned by another role must be reported as un-maintainable"
         )
 
 
-def test_vacuum_reports_refusal_against_a_real_server(seeded):
+def test_vacuum_reports_refusal_against_a_real_server(unprivileged):
     """
-    Full path through DatabaseManager: refuse where we must, succeed where we
-    may. This is the assertion that would have caught the original bug.
+    The exact scenario from the bug report, against a real server: a role that
+    owns nothing asks the Doctor to vacuum, and must be told it did not happen.
     """
     from coruscant.core.database import DatabaseManager
 
     db = DatabaseManager()
-    db._conn = seeded          # reuse the fixture's live connection
+    db._conn = unprivileged
 
-    with seeded.cursor() as cur:
-        cur.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
-        is_super = cur.fetchone()[0]
+    reasons = db.vacuum_table("smoke", "parent")
+    assert reasons, "vacuuming a table owned by another role must be reported"
+    assert "owner" in reasons[0].lower()
+    assert "smoke.parent" in reasons[0]
 
+
+def test_vacuum_succeeds_where_the_role_does_own_the_table(seeded):
+    from coruscant.core.database import DatabaseManager
+
+    db = DatabaseManager()
+    db._conn = seeded
     assert db.vacuum_table("smoke", "parent") == [], (
         "vacuuming a table we own must report no refusal"
     )
 
-    if not is_super:
-        reasons = db.vacuum_table("smoke", "foreign_owned")
-        assert reasons, "vacuuming a table owned by another role must be reported"
-        assert "owner" in reasons[0].lower()
+
+def test_unmaintainable_tables_lists_what_the_role_cannot_touch(unprivileged):
+    from coruscant.core.database import DatabaseManager
+
+    db = DatabaseManager()
+    db._conn = unprivileged
+    names = db.unmaintainable_tables()
+    assert "smoke.parent" in names, (
+        f"expected smoke.parent among un-maintainable tables, got {names[:5]}"
+    )

@@ -777,3 +777,163 @@ class TestVacuumReportsSkippedTables:
         self._emit_on_execute(mc, cur, self.SKIP)
         db.vacuum_table("s", "t")
         assert mc.autocommit is False
+
+
+# ---------------------------------------------------------------------------
+# Contract: maintenance commands must not report silent success
+# ---------------------------------------------------------------------------
+
+class TestMaintenanceCommandsSurfaceSkips:
+    """
+    A repair must never report success for work PostgreSQL declined to do.
+
+    PostgreSQL refuses maintenance on objects the current role does not own by
+    emitting a WARNING and continuing — the statement "succeeds". Any method
+    that issues VACUUM / ANALYZE / REINDEX / CLUSTER and reports back purely on
+    the absence of an exception will therefore tell the user it vacuumed 20
+    tables when it vacuumed none. That is exactly how the Table Bloat repair
+    shipped broken.
+
+    These tests find the maintenance methods *by inspecting the source* rather
+    than from a hand-maintained list, so a repair added later is covered
+    automatically: add `reindex_table()` that ignores notices and this fails.
+    """
+
+    MAINTENANCE_SQL = ("VACUUM", "REINDEX", "CLUSTER", "ANALYZE")
+
+    # Methods that issue a maintenance command but legitimately cannot be
+    # skipped for ownership. Keep empty unless there is a real reason, and
+    # state the reason — this set is the escape hatch that would let the bug
+    # back in.
+    EXEMPT: dict[str, str] = {}
+
+    @classmethod
+    def _maintenance_methods(cls) -> dict[str, int]:
+        """Method name -> line number, for methods issuing a maintenance command."""
+        import ast
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        src = (root / "coruscant" / "core" / "database.py").read_text(encoding="utf-8")
+        tree = ast.parse(src)
+
+        found: dict[str, int] = {}
+        for cls_node in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+            if cls_node.name != "DatabaseManager":
+                continue
+            for fn in (n for n in cls_node.body
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))):
+                for sub in ast.walk(fn):
+                    # A string constant naming a maintenance command, either
+                    # executed directly or built into a command variable.
+                    if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                        head = sub.value.strip().upper()
+                        if any(head.startswith(v) for v in cls.MAINTENANCE_SQL):
+                            found[fn.name] = fn.lineno
+                            break
+        return found
+
+    def test_discovery_finds_the_known_maintenance_methods(self):
+        """Guards the guard: if discovery silently finds nothing, the rest passes vacuously."""
+        found = self._maintenance_methods()
+        assert "vacuum_table" in found, f"discovery missed vacuum_table; found {sorted(found)}"
+        assert "vacuum_freeze" in found, f"discovery missed vacuum_freeze; found {sorted(found)}"
+
+    def test_each_maintenance_method_inspects_notices(self):
+        """Structural: the method must look at conn.notices at all."""
+        import ast
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        tree = ast.parse((root / "coruscant" / "core" / "database.py").read_text(encoding="utf-8"))
+        bodies = {n.name: n for n in ast.walk(tree)
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+        offenders = []
+        for name, lineno in self._maintenance_methods().items():
+            if name in self.EXEMPT:
+                continue
+            body = bodies.get(name)
+            if body is None:
+                continue
+            reads = any(
+                (isinstance(n, ast.Attribute) and n.attr == "notices")
+                or (isinstance(n, ast.Constant) and n.value == "notices")
+                for n in ast.walk(body)
+            )
+            if not reads:
+                offenders.append(f"  line {lineno}: {name}()")
+        assert not offenders, (
+            "maintenance method(s) never read conn.notices, so a permission-denied "
+            "skip is reported as success:\n" + "\n".join(offenders)
+        )
+
+    def test_each_maintenance_method_reports_a_permission_skip(self):
+        """
+        Behavioural: with PostgreSQL emitting a skip warning, the method must
+        return something truthy (the warnings) or raise — never a clean result.
+        """
+        import inspect
+
+        skip = ('WARNING:  skipping "t" --- '
+                'only table or database owner can vacuum it\n')
+
+        offenders = []
+        for name in self._maintenance_methods():
+            if name in self.EXEMPT:
+                continue
+            db, mc, cur = _make_connected_db()
+            mc.notices = []
+            cur.execute.side_effect = lambda *a, **k: mc.notices.append(skip)
+
+            method = getattr(db, name)
+            params = [
+                p for p in inspect.signature(method).parameters.values()
+                if p.default is inspect.Parameter.empty
+                and p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+            ]
+            try:
+                result = method(*["x"] * len(params))
+            except Exception:
+                continue          # raising is an acceptable way to not lie
+            if not result:
+                offenders.append(
+                    f"  {name}() returned {result!r} while PostgreSQL was "
+                    f"reporting a skipped table"
+                )
+        assert not offenders, (
+            "maintenance method(s) reported success for work PostgreSQL skipped:\n"
+            + "\n".join(offenders)
+        )
+
+    def test_doctor_never_discards_a_maintenance_result(self):
+        """
+        The other half of the bug: core can report the skip faithfully and the
+        dialog can still throw it away. The Doctor's repair closures called
+        `self._db.vacuum_table(...)` as a bare statement and returned a
+        hardcoded "complete" string.
+
+        Any call to a maintenance method in doctor.py must use its result —
+        assigned, returned, or tested — never left as a bare expression.
+        """
+        import ast
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        path = root / "coruscant" / "ui" / "dialogs" / "doctor.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        maintenance = set(self._maintenance_methods())
+
+        discarded = []
+        for node in ast.walk(tree):
+            # A bare expression statement whose value is the call = result dropped.
+            if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
+                continue
+            fn = node.value.func
+            if isinstance(fn, ast.Attribute) and fn.attr in maintenance:
+                discarded.append(f"  line {node.lineno}: {fn.attr}() result discarded")
+
+        assert not discarded, (
+            "doctor.py drops the return value of a maintenance call, so a "
+            "reported skip cannot reach the user:\n" + "\n".join(discarded)
+        )

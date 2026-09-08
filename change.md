@@ -1,5 +1,64 @@
 # Changelog
 
+### 1.1.4
+
+Documentation corrections and test coverage. No behavioural change to the
+application; the binaries differ from 1.1.3 only in version metadata.
+
+**Tests — the Database Doctor's severity logic was entirely untested**
+
+Coverage measurement put `core/doctor.py` at **31%**: all four `assess_*`
+functions and the duration formatter had no behavioural coverage at all. The
+only thing referencing them was `test_severity_functions_present`, which
+asserts the function *names* exist — it passes whether they return the correct
+severity or always return OK.
+
+These decide whether a user is shown Healthy, Warning or Critical, and
+therefore whether they reach for a repair button. They are pure functions —
+row tuples in, `(severity, message)` out — so there was no reason for the gap.
+
+35 tests now cover them, asserted at the threshold boundaries where an
+off-by-one would actually bite: 60 seconds is still a warning but 61 is
+critical; 30% dead tuples escalates but 29.9% does not; ten mildly bloated
+tables escalate on breadth alone; five idle-in-transaction sessions are
+critical even on an otherwise quiet server. Also covered: `Decimal` values as
+psycopg2 actually returns them from `round()`, a `NULL` `query_start`, and
+`max_connections` of zero, which would otherwise divide by zero.
+
+Verified by mutation rather than assumed: each of six threshold changes to the
+source was reintroduced and confirmed to fail the suite. `core/doctor.py` is
+now at 100%, and `core/` overall at 93%.
+
+**Docs — every checkable claim verified against the source**
+
+- The README architecture tree was missing six modules, among them
+  `core/doctor.py`, `core/metrics.py`, `ui/dialogs/dashboard.py` and
+  `ui/dialogs/recovery.py` — the Database Doctor, the Live Monitor and
+  Recovery Mode, three headline features absent from the diagram entirely.
+- `VACUUM FULL` was documented nowhere, having shipped in 1.1.3. The most
+  destructive action in the application is now described in both documents,
+  including why there is no "FULL All", and both now state the lock level of
+  plain `VACUUM` rather than leaving it unsaid.
+- The Doctor's blocker button is labelled **Kill Selected Blocker**; both
+  documents called it "Kill Blocker", sending readers to look for a button
+  that does not exist.
+- The README's SSL table listed four of the six modes psycopg2 accepts,
+  omitting `allow` and `verify-ca`.
+- The managed-PostgreSQL note still told users to expect permission errors.
+  Since 1.1.3 ownership is checked against the catalog first.
+
+Checked and found already correct: six QA checks, ten KPI gauges, four
+sparklines, ten dashboard tabs, the keyboard shortcuts, and the requirements
+table.
+
+Two of these are now enforced by `tests/test_docs.py`: every module under
+`coruscant/` must appear in the architecture tree, and every Doctor repair
+button must be described in at least one document. The first missed its own
+regression when written — it compared basenames, and `doctor.py` exists in two
+directories — so it compares counts now.
+
+689 tests, up from 652.
+
 ### 1.1.3
 
 Architectural cleanup, plus two user-visible changes to the Database Doctor.

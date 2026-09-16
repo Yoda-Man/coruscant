@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.1.4  
+**Version:** 1.1.5  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -297,12 +297,15 @@ public (schema)
   │     ├── Columns (5)
   │     ├── Indexes (2)  ← hover for DDL definition
   │     └── Foreign Keys (1)
+  ├── sales_mv [M]      ← materialised views are listed too
   └── Functions / Procedures (3)
+        calc(a integer)   ← listed by signature, so overloads stay distinct
 ```
 
 - **▶ SELECT** button → `SELECT * FROM "schema"."table" LIMIT 100;` at cursor  
 - **Right-click a schema** → **⚡ Query Builder**, **Generate ERD**, **🗺 Mind Map**, **🔍 QA Engine**  
 - **Right-click a table** → SELECT / UPDATE / DELETE script templates, **🗺 Mind Map from here**  
+- **Right-click a view or routine** → **📄 Show definition**, which opens the object's source in a new editor tab. Functions, procedures and views come back as runnable `CREATE OR REPLACE` statements, so editing one is: show, change, **F5**. Materialised views come back as `CREATE MATERIALIZED VIEW` under a comment explaining that replacing one means dropping it first.  
 - **⚙ Settings** → toggle Auto-complete, Line numbers, Cell-viewer auto-close, **Run QA Engine on connect**  
 - **📖 Guide** → opens the full in-app quick-reference guide
 

@@ -1,5 +1,100 @@
 # Changelog
 
+### 1.1.5
+
+Object source in the Schema Browser. Right-click a function, procedure, view
+or materialised view and choose **Show definition**: its source opens in a new
+editor tab, named for the object. `CREATE OR REPLACE` already executed, so
+this closes the loop — read the definition, change it, press F5.
+
+**The schema tree moved from information_schema to pg_catalog**
+
+The old queries could not support this, for three reasons:
+
+* `information_schema.tables` has no materialised views — they are not in the
+  SQL standard — so they were missing from the tree entirely, along with their
+  columns.
+* `information_schema.routines` identifies a routine by name, and a name is
+  not unique: PostgreSQL allows overloading. `calc(integer)` and
+  `calc(numeric)` arrived as two identical rows that nothing could tell apart,
+  let alone fetch the source of.
+* Neither exposed an OID, which is the only stable handle a definition lookup
+  can be keyed on.
+
+Routines are now listed by signature rather than by name, so overloads are
+distinct on screen. Column types render through `format_type()`, so a
+`varchar(50)` reads as `varchar(50)` instead of a bare `character varying`.
+`has_table_privilege()` preserves the visibility rule `information_schema`
+applied for free: a relation the current role holds no privilege on stays out
+of the tree.
+
+`pg_proc.prokind` replaced `proisagg`/`proiswindow` in PostgreSQL 11, and
+naming a column the server does not have is a parse error rather than an empty
+result — so the pre-11 form is a separate statement selected by server
+version. An unreported version takes the modern query: guessing the other way
+would break every supported server to accommodate an unsupported one.
+
+**What comes back**
+
+Functions and procedures come back as the server renders them —
+`pg_get_functiondef()` emits a complete, directly re-runnable statement.
+
+Views do not. `pg_get_viewdef()` returns the `SELECT` body alone, so the
+`CREATE OR REPLACE VIEW` is rebuilt around it, with identifiers quoted so a
+view called `"Order Details"` survives the round trip.
+
+Materialised views come back as a plain `CREATE MATERIALIZED VIEW` under a
+comment explaining why: PostgreSQL has no replace form for one, so changing it
+means `DROP` then `CREATE`, discarding the stored rows along with every index,
+grant and policy on it. Presenting that as a safe in-place edit would be a
+trap.
+
+Aggregates have no source form at all — `pg_get_functiondef()` raises on one —
+so the tree marks them and the menu entry is disabled rather than offering an
+action that can only fail.
+
+**A failed lookup no longer costs you uncommitted work**
+
+These lookups share the connection queries run on. With auto-commit off, a
+failed statement aborts the surrounding transaction and every later statement
+in it — so asking for the source of something another session had just dropped
+would silently discard whatever was uncommitted. The lookup now runs inside a
+savepoint. The guard keys on auto-commit rather than on an already-open
+transaction, because with auto-commit off the lookup itself is what opens one.
+
+Definitions are fetched on a background thread and open in a **new** tab, never
+the one being edited: a definition is a whole statement and would overwrite
+work in progress.
+
+**Tests**
+
+117 new tests, 716 to 833.
+
+The live-SQL suite carries the weight here, because a mock cursor accepts any
+string and cannot tell whether `relkind` `'m'` really surfaces a materialised
+view. Against a real PostgreSQL 16 the suite now fetches a function's source,
+executes it, calls the function and checks the answer; does the same for a
+view, including one named `"Order Details"` to exercise quoting; confirms the
+server genuinely refuses an aggregate, which is what the disabled menu entry
+rests on; and confirms a failed lookup leaves an open transaction usable —
+something no mock can demonstrate.
+
+Two live cases skip with stated reasons: `STATEMENTS_SQL` needs
+`pg_stat_statements`, and the pre-11 routines query is rejected by design on a
+modern server, so it remains unexercised until someone runs against
+PostgreSQL 10 or older.
+
+The UI tests assert against the AST rather than the source text, so a docstring
+mentioning `insert_sql` cannot satisfy a test that the handler does not call
+it.
+
+**Unchanged**
+
+Triggers, sequences and job scheduling are still absent. Editing remains the
+SQL editor's job: there is no object editor, no Save button, no validation,
+and no warning about dependents when a view is replaced.
+
+
 ### 1.1.4
 
 Documentation corrections and test coverage. No behavioural change to the

@@ -798,3 +798,181 @@ class TestSaveStateWidgetsHaveObjectNames:
                 f"QMainWindow.saveState() will skip these and the layout will "
                 f"not persist:\n{detail}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Object source: schema.py → main_window.py wiring
+# ---------------------------------------------------------------------------
+
+_SCHEMA_PY = "coruscant/ui/panels/schema.py"
+_MAIN_PY = "coruscant/ui/main_window.py"
+
+
+def _method_src(rel: str, name: str) -> str:
+    """Source of the first method or function called *name* in *rel*."""
+    tree = _ast(rel)
+    lines = _src(rel).splitlines()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return "\n".join(lines[node.lineno - 1:node.end_lineno])
+    return ""
+
+
+def _method_node(rel: str, name: str):
+    for node in ast.walk(_ast(rel)):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    return None
+
+
+def _dotted(func) -> str:
+    """"self.open_sql_tab.emit" for the func of a Call node."""
+    parts = []
+    while isinstance(func, ast.Attribute):
+        parts.append(func.attr)
+        func = func.value
+    if isinstance(func, ast.Name):
+        parts.append(func.id)
+    return ".".join(reversed(parts))
+
+
+def _call_targets(rel: str, name: str) -> set[str]:
+    """
+    Every call made inside a method, as dotted names.
+
+    Substring checks over the source cannot tell a call from a docstring
+    mentioning one, and the distinction is the entire point of the
+    "does not call X" tests below.
+    """
+    node = _method_node(rel, name)
+    assert node is not None, f"{name} not found in {rel}"
+    return {_dotted(sub.func) for sub in ast.walk(node)
+            if isinstance(sub, ast.Call)}
+
+
+class TestDefinitionLookupStructure:
+    """
+    The pieces that let the tree show an object's source.  Qt is never
+    imported here, so these assert structure and wiring rather than clicks.
+    """
+
+    def test_definition_worker_class_exists(self):
+        assert "_DefinitionWorker" in _defined_classes(_ast(_SCHEMA_PY))
+
+    def test_definition_worker_is_a_qthread(self):
+        """
+        Off the GUI thread or not at all: pg_get_functiondef() on a busy
+        server is a round trip, and on the GUI thread it freezes the window.
+        """
+        for node in ast.walk(_ast(_SCHEMA_PY)):
+            if isinstance(node, ast.ClassDef) and node.name == "_DefinitionWorker":
+                bases = [b.id for b in node.bases if isinstance(b, ast.Name)]
+                assert "QThread" in bases
+                return
+        raise AssertionError("_DefinitionWorker not found")
+
+    def test_open_sql_tab_signal_is_declared(self):
+        assert "open_sql_tab" in _src(_SCHEMA_PY)
+
+    def test_handler_methods_are_defined(self):
+        fns = _defined_functions(_ast(_SCHEMA_PY))
+        for name in ("_show_routine_definition", "_show_view_definition",
+                     "_start_definition_fetch", "_on_definition_ready",
+                     "_on_definition_error"):
+            assert name in fns, f"{name} missing from schema.py"
+
+    # ── the lookup must stay off the GUI thread ────────────────────────
+
+    def test_fetch_goes_through_the_worker(self):
+        calls = _call_targets(_SCHEMA_PY, "_start_definition_fetch")
+        assert "_DefinitionWorker" in calls
+        assert any(t.endswith(".start") for t in calls)
+
+    def test_worker_is_retained_on_the_panel(self):
+        """
+        A QThread that only a local name holds can be collected mid-run.  The
+        other workers in this panel are kept on self for the same reason.
+        """
+        assert "_def_worker" in _src(_SCHEMA_PY)
+        assert "self._def_worker = _DefinitionWorker" in _src(_SCHEMA_PY)
+
+    def test_panel_does_not_fetch_definitions_inline(self):
+        """
+        The database calls belong inside the callable handed to the worker,
+        never in a handler that runs on the GUI thread.
+        """
+        for name in ("_on_definition_ready", "_on_definition_error"):
+            calls = _call_targets(_SCHEMA_PY, name)
+            assert not any(t.endswith("get_routine_definition") for t in calls)
+            assert not any(t.endswith("get_view_definition") for t in calls)
+
+    # ── a definition opens a tab, it does not overwrite one ────────────
+
+    def test_ready_handler_emits_open_sql_tab(self):
+        calls = _call_targets(_SCHEMA_PY, "_on_definition_ready")
+        assert "self.open_sql_tab.emit" in calls
+
+    def test_ready_handler_does_not_insert_into_the_current_tab(self):
+        """
+        insert_sql() writes into whatever the user is editing.  A definition
+        is a whole statement, so that would destroy unsaved work.
+        """
+        calls = _call_targets(_SCHEMA_PY, "_on_definition_ready")
+        assert not any("insert_sql" in t for t in calls)
+
+    def test_main_window_connects_the_signal(self):
+        assert "open_sql_tab.connect" in _src(_MAIN_PY)
+
+    def test_main_window_handler_opens_a_new_tab(self):
+        calls = _call_targets(_MAIN_PY, "_on_schema_open_sql_tab")
+        assert "self._add_editor_tab" in calls
+
+    def test_main_window_handler_does_not_reuse_the_current_tab(self):
+        calls = _call_targets(_MAIN_PY, "_on_schema_open_sql_tab")
+        assert not any("_current_editor_tab" in t for t in calls)
+        assert not any("insert_sql" in t for t in calls)
+
+    def test_main_window_handler_matches_the_signal_arity(self):
+        """Signal(str, str) against (self, title, sql)."""
+        node = _method_node(_MAIN_PY, "_on_schema_open_sql_tab")
+        assert node is not None
+        assert len(node.args.args) == 3
+
+    def test_new_tab_is_named_for_the_object(self):
+        calls = _call_targets(_MAIN_PY, "_on_schema_open_sql_tab")
+        assert any(t.endswith("setTabText") for t in calls)
+
+    # ── the tree carries what the lookups need ─────────────────────────
+
+    def test_tree_rows_carry_the_oid(self):
+        """Both relation and routine rows key their lookup on the OID."""
+        src = _src(_SCHEMA_PY)
+        assert '"oid": tbl.get("oid")' in src
+        assert '"oid":        fn.get("oid")' in src
+
+    def test_routine_rows_are_labelled_by_signature(self):
+        """Overloads share a name; the signature is what separates them."""
+        src = _src(_SCHEMA_PY)
+        assert 'fn.get("signature")' in src
+
+    def test_aggregates_are_gated_on_has_source(self):
+        """
+        pg_get_functiondef() raises on an aggregate, so the menu must not
+        offer an action that can only fail.
+        """
+        body = _method_src(_SCHEMA_PY, "_on_context_menu")
+        assert "has_source" in body
+
+    def test_definition_offered_for_both_view_kinds(self):
+        body = _method_src(_SCHEMA_PY, "_on_context_menu")
+        assert "VIEW" in body
+        assert "MATERIALIZED VIEW" in body
+
+    def test_routine_rows_get_their_own_menu(self):
+        """
+        Before this, _on_context_menu returned early for anything that was
+        not a table, so routines had no menu at all.
+        """
+        calls = _call_targets(_SCHEMA_PY, "_on_context_menu")
+        assert any("_show_routine_definition" in t for t in calls)
+        assert any("_show_view_definition" in t for t in calls)

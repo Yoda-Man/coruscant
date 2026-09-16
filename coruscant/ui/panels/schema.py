@@ -88,6 +88,33 @@ class _MindMapWorker(QThread):
             self.error.emit(str(exc))
 
 
+class _DefinitionWorker(QThread):
+    """
+    Fetches one object's source in a background thread.
+
+    Takes a zero-argument callable rather than an object description: the
+    routine and view lookups have different signatures, and the alternative
+    is this worker growing a branch for every kind of object the tree learns
+    to read.
+    """
+
+    finished: Signal = Signal(str, str)   # title, sql
+    error:    Signal = Signal(str)
+
+    def __init__(self, title: str, fetch, parent=None) -> None:
+        super().__init__(parent)
+        self._title = title
+        self._fetch = fetch
+
+    def run(self) -> None:
+        log.info("Definition fetch started  %s", self._title)
+        try:
+            self.finished.emit(self._title, self._fetch())
+        except Exception as exc:
+            log.exception("Definition fetch failed for %s", self._title)
+            self.error.emit(str(exc))
+
+
 class _QAWorker(QThread):
     """Runs the QA engine in a background thread."""
 
@@ -133,6 +160,7 @@ class SchemaBrowser(QWidget):
     """Left-dock schema tree panel."""
 
     insert_sql:              Signal = Signal(str)
+    open_sql_tab:            Signal = Signal(str, str)   # title, sql
     schema_loaded:           Signal = Signal(list)   # list[str] of all identifiers
     autocomplete_changed:    Signal = Signal(bool)
     autoclose_changed:       Signal = Signal(bool)
@@ -149,6 +177,7 @@ class SchemaBrowser(QWidget):
         self._worker:       _SchemaWorker  | None = None
         self._qa_worker:    _QAWorker      | None = None
         self._mm_worker:    _MindMapWorker | None = None
+        self._def_worker:   _DefinitionWorker | None = None
         self._qsettings = QSettings("Coruscant", "Coruscant")
         self._build_ui()
         self._set_connected(False)
@@ -377,14 +406,24 @@ class SchemaBrowser(QWidget):
                 self._make_italic(fn_group)
                 fn_group.setForeground(0, Qt.GlobalColor.gray)
                 for fn in fns:
-                    fn_item = QTreeWidgetItem([fn["name"], fn.get("return_type", "")])
+                    # Label with the signature, not the name: overloads share
+                    # a name, and two identical rows cannot be told apart or
+                    # acted on.
+                    label = fn.get("signature") or fn["name"]
+                    fn_item = QTreeWidgetItem([label, fn.get("return_type", "")])
                     fn_item.setData(0, Qt.ItemDataRole.UserRole, {
-                        "kind": "function", "schema": schema_name, "name": fn["name"],
+                        "kind":       "function",
+                        "schema":     schema_name,
+                        "name":       fn["name"],
+                        "oid":        fn.get("oid"),
+                        "arguments":  fn.get("arguments", ""),
+                        "type":       fn.get("type", "FUNCTION"),
+                        "has_source": fn.get("has_source", True),
                     })
                     fn_item.setToolTip(
                         0,
                         f"{fn.get('type','FUNCTION')}  "
-                        f"{schema_name}.{fn['name']}() → {fn.get('return_type','')}",
+                        f"{schema_name}.{label} → {fn.get('return_type','')}",
                     )
                     fn_item.setForeground(1, Qt.GlobalColor.gray)
                     fn_group.addChild(fn_item)
@@ -409,7 +448,8 @@ class SchemaBrowser(QWidget):
         ttype    = tbl.get("type", "")
         tbl_item = QTreeWidgetItem([name, ""])   # col 1 gets a ▶ SELECT button via setItemWidget
         tbl_item.setData(0, Qt.ItemDataRole.UserRole,
-                         {"kind": "table", "schema": schema, "table": name})
+                         {"kind": "table", "schema": schema, "table": name,
+                          "oid": tbl.get("oid"), "type": ttype})
         tbl_item.setToolTip(0, f"{ttype}  {schema}.{name}")
 
         def _subgroup(label: str, items: list, item_fn, kind: str = "") -> QTreeWidgetItem | None:
@@ -489,7 +529,11 @@ class SchemaBrowser(QWidget):
             self.insert_sql.emit(f'SELECT * FROM "{s}"."{t}" LIMIT 100;')
         elif data.get("kind") == "function":
             s, n = data["schema"], data["name"]
-            self.insert_sql.emit(f'SELECT "{s}"."{n}"();')
+            args = data.get("arguments", "")
+            # The identity arguments are declarations, not values, so they go
+            # in as a comment the user fills in rather than as broken SQL.
+            inner = f"/* {args} */" if args else ""
+            self.insert_sql.emit(f'SELECT "{s}"."{n}"({inner});')
 
     def _on_context_menu(self, pos) -> None:
         item = self._tree.itemAt(pos)
@@ -512,6 +556,20 @@ class SchemaBrowser(QWidget):
             menu.exec(self._tree.viewport().mapToGlobal(pos))
             return
 
+        if kind == "function":
+            menu = QMenu(self._tree)
+            if data.get("has_source", True):
+                menu.addAction("\U0001f4c4 Show definition",
+                               lambda: self._show_routine_definition(data))
+            else:
+                # pg_get_functiondef() raises on an aggregate rather than
+                # returning text, so the entry says why instead of offering
+                # an action that can only fail.
+                act = menu.addAction("\U0001f4c4 Definition unavailable (aggregate)")
+                act.setEnabled(False)
+            menu.exec(self._tree.viewport().mapToGlobal(pos))
+            return
+
         if kind != "table":
             return
 
@@ -520,6 +578,10 @@ class SchemaBrowser(QWidget):
         cols   = self._columns_for_item(item)
 
         menu = QMenu(self._tree)
+        if data.get("type") in ("VIEW", "MATERIALIZED VIEW"):
+            menu.addAction("\U0001f4c4 Show definition",
+                           lambda: self._show_view_definition(data))
+            menu.addSeparator()
         menu.addAction("SELECT script",  lambda: self.insert_sql.emit(self._sql_select(schema, table, cols)))
         menu.addAction("UPDATE script",  lambda: self.insert_sql.emit(self._sql_update(schema, table, cols)))
         menu.addAction("DELETE script",  lambda: self.insert_sql.emit(self._sql_delete(schema, table, cols)))
@@ -574,6 +636,54 @@ class SchemaBrowser(QWidget):
     def _on_mind_map_error(self, message: str) -> None:
         log.error("Mind map error: %s", message)
         self._status.setText(f"Mind map error: {message[:60]}")
+
+    # ── Object source ────────────────────────────────────────────────── #
+
+    def _show_routine_definition(self, data: dict) -> None:
+        """Fetch the CREATE OR REPLACE statement for a routine tree row."""
+        oid = data.get("oid")
+        title = f"{data['schema']}.{data['name']}"
+        if oid is None:
+            # Pre-OID tree data, i.e. a stale tree from before a refresh.
+            self._status.setText(f"No OID for {title} — refresh the schema")
+            return
+        self._start_definition_fetch(
+            title, lambda: self._db.get_routine_definition(oid)
+        )
+
+    def _show_view_definition(self, data: dict) -> None:
+        """Fetch a runnable CREATE statement for a view or materialised view."""
+        oid = data.get("oid")
+        schema, name = data["schema"], data["table"]
+        title = f"{schema}.{name}"
+        if oid is None:
+            self._status.setText(f"No OID for {title} — refresh the schema")
+            return
+        materialized = data.get("type") == "MATERIALIZED VIEW"
+        self._start_definition_fetch(
+            title,
+            lambda: self._db.get_view_definition(schema, name, oid, materialized),
+        )
+
+    def _start_definition_fetch(self, title: str, fetch) -> None:
+        """Run *fetch* off the GUI thread and open the result in a new tab."""
+        if self._def_worker and self._def_worker.isRunning():
+            return
+        self._status.setText(f"Loading definition for {title}…")
+        self._def_worker = _DefinitionWorker(title, fetch, parent=self)
+        self._def_worker.finished.connect(self._on_definition_ready)
+        self._def_worker.error.connect(self._on_definition_error)
+        self._def_worker.start()
+
+    def _on_definition_ready(self, title: str, sql: str) -> None:
+        self._status.setText(f"Definition: {title}")
+        # A new tab, not the current one: a definition is a whole statement
+        # and would overwrite whatever the user is editing.
+        self.open_sql_tab.emit(title, sql)
+
+    def _on_definition_error(self, message: str) -> None:
+        log.error("Definition error: %s", message)
+        self._status.setText(f"Definition error: {message[:60]}")
 
     def _run_qa(self, schema: str) -> None:
         """Launch the QA engine in a background thread for *schema*."""

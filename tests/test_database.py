@@ -61,6 +61,10 @@ from coruscant.core.database import (   # noqa: E402  (import after stub)
     QueryResult,
     CommandResult,
     PGCODE_QUERY_CANCELED,
+    PROKIND_MIN_SERVER_VERSION,
+    SCHEMA_ROUTINES_SQL,
+    SCHEMA_ROUTINES_PRE11_SQL,
+    quote_ident,
 )
 
 
@@ -108,6 +112,7 @@ def _make_connected_db(
     mock_conn.autocommit = autocommit
     mock_conn.encoding = "utf-8"
     mock_conn.status = _psycopg2.extensions.STATUS_IN_TRANSACTION
+    mock_conn.server_version = 160000   # PostgreSQL 16.0 — has prokind
 
     _calls = count()
     mock_conn.cursor.side_effect = lambda: (
@@ -597,34 +602,41 @@ class TestExecuteParams:
 # ---------------------------------------------------------------------------
 
 class TestGetSchemaTree:
-    def _mock_fetchall_sequence(self, cur, table_rows, col_rows,
+    """
+    Row shapes here mirror the catalog queries in database.py:
+
+        relations : (schema, name, oid, relation_type)
+        columns   : (schema, relation, column, type, attnum)
+        indexes   : (schema, relation, index, definition)
+        fks       : (schema, relation, constraint, definition)
+        routines  : (schema, name, oid, identity_args, prokind, result_type)
+    """
+
+    def _mock_fetchall_sequence(self, cur, relation_rows, col_rows,
                                  idx_rows, fk_rows, fn_rows):
         """Make cur.fetchall() return different values on successive calls."""
-        responses = iter([table_rows, col_rows, idx_rows, fk_rows, fn_rows])
+        responses = iter([relation_rows, col_rows, idx_rows, fk_rows, fn_rows])
         cur.fetchall.side_effect = lambda: next(responses)
+
+    # ── shape ──────────────────────────────────────────────────────────
 
     def test_returns_list(self):
         db, _, cur = _make_connected_db()
         self._mock_fetchall_sequence(
             cur,
-            [("public", "users", "BASE TABLE")],
+            [("public", "users", 16384, "BASE TABLE")],
             [("public", "users", "id", "integer", 1)],
-            [],
-            [],
-            [],
+            [], [], [],
         )
-        result = db.get_schema_tree()
-        assert isinstance(result, list)
+        assert isinstance(db.get_schema_tree(), list)
 
     def test_schema_dict_shape(self):
         db, _, cur = _make_connected_db()
         self._mock_fetchall_sequence(
             cur,
-            [("public", "users", "BASE TABLE")],
+            [("public", "users", 16384, "BASE TABLE")],
             [("public", "users", "id", "integer", 1)],
-            [],
-            [],
-            [],
+            [], [], [],
         )
         result = db.get_schema_tree()
         assert len(result) == 1
@@ -637,15 +649,12 @@ class TestGetSchemaTree:
         db, _, cur = _make_connected_db()
         self._mock_fetchall_sequence(
             cur,
-            [("public", "users", "BASE TABLE")],
+            [("public", "users", 16384, "BASE TABLE")],
             [("public", "users", "id", "integer", 1),
              ("public", "users", "name", "text", 2)],
-            [],
-            [],
-            [],
+            [], [], [],
         )
-        result = db.get_schema_tree()
-        table = result[0]["tables"][0]
+        table = db.get_schema_tree()[0]["tables"][0]
         assert len(table["columns"]) == 2
         assert table["columns"][0]["name"] == "id"
 
@@ -653,28 +662,20 @@ class TestGetSchemaTree:
         db, _, cur = _make_connected_db()
         self._mock_fetchall_sequence(
             cur,
-            [("public", "users", "BASE TABLE")],
+            [("public", "users", 16384, "BASE TABLE")],
             [],
             [("public", "users", "users_pkey", "CREATE UNIQUE INDEX ...")],
-            [],
-            [],
+            [], [],
         )
-        result = db.get_schema_tree()
-        table = result[0]["tables"][0]
-        assert len(table["indexes"]) == 1
+        assert len(db.get_schema_tree()[0]["tables"][0]["indexes"]) == 1
 
     def test_functions_attached_to_schema(self):
         db, _, cur = _make_connected_db()
         self._mock_fetchall_sequence(
-            cur,
-            [],
-            [],
-            [],
-            [],
-            [("public", "my_func", "FUNCTION", "integer")],
+            cur, [], [], [], [],
+            [("public", "my_func", 20001, "", "f", "integer")],
         )
-        result = db.get_schema_tree()
-        schema = result[0]
+        schema = db.get_schema_tree()[0]
         assert schema["schema"] == "public"
         assert len(schema["functions"]) == 1
         assert schema["functions"][0]["name"] == "my_func"
@@ -682,20 +683,17 @@ class TestGetSchemaTree:
     def test_fk_error_returns_empty_fks(self):
         """FK query failure must be silently swallowed (returns empty list)."""
         db, _, cur = _make_connected_db()
-        table_rows = [("public", "users", "BASE TABLE")]
-        col_rows   = []
-        idx_rows   = []
-        fn_rows    = []
+        relation_rows = [("public", "users", 16384, "BASE TABLE")]
 
         call_n = count()
 
         def _fetchall():
             n = next(call_n)
-            if n == 0: return table_rows
-            if n == 1: return col_rows
-            if n == 2: return idx_rows
-            # n==3 is the FK query — execute() raises, so fetchall not called
-            if n == 3: return fn_rows   # functions
+            if n == 0: return relation_rows
+            if n == 1: return []          # columns
+            if n == 2: return []          # indexes
+            # n == 3 is the FK query — execute() raises, fetchall not reached
+            if n == 3: return []          # routines
             return []
 
         cur.fetchall.side_effect = _fetchall
@@ -706,20 +704,173 @@ class TestGetSchemaTree:
         ]
         result = db.get_schema_tree()
         assert isinstance(result, list)
+        assert result[0]["tables"][0]["foreign_keys"] == []
 
     def test_multiple_schemas_sorted(self):
         db, _, cur = _make_connected_db()
         self._mock_fetchall_sequence(
             cur,
-            [("zschema", "t1", "BASE TABLE"), ("aschema", "t2", "BASE TABLE")],
-            [],
-            [],
-            [],
-            [],
+            [("zschema", "t1", 1, "BASE TABLE"), ("aschema", "t2", 2, "BASE TABLE")],
+            [], [], [], [],
         )
-        result = db.get_schema_tree()
-        names = [s["schema"] for s in result]
+        names = [s["schema"] for s in db.get_schema_tree()]
         assert names == sorted(names)
+
+    # ── OIDs: the handle every definition lookup is keyed on ───────────
+
+    def test_relation_carries_its_oid(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [("public", "users", 16384, "BASE TABLE")], [], [], [], [],
+        )
+        assert db.get_schema_tree()[0]["tables"][0]["oid"] == 16384
+
+    def test_routine_carries_its_oid(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [],
+            [("public", "f", 20001, "", "f", "integer")],
+        )
+        assert db.get_schema_tree()[0]["functions"][0]["oid"] == 20001
+
+    # ── relation kinds ─────────────────────────────────────────────────
+
+    def test_materialised_view_is_listed(self):
+        """
+        information_schema.tables has no materialised views, so before the
+        move to pg_class they were absent from the tree entirely.
+        """
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [("public", "sales_mv", 30001, "MATERIALIZED VIEW")],
+            [], [], [], [],
+        )
+        rel = db.get_schema_tree()[0]["tables"][0]
+        assert rel["name"] == "sales_mv"
+        assert rel["type"] == "MATERIALIZED VIEW"
+
+    def test_view_type_is_preserved(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [("public", "v_users", 30002, "VIEW")], [], [], [], [],
+        )
+        assert db.get_schema_tree()[0]["tables"][0]["type"] == "VIEW"
+
+    def test_matview_columns_attach(self):
+        """pg_attribute covers matviews; information_schema.columns did not."""
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur,
+            [("public", "sales_mv", 30001, "MATERIALIZED VIEW")],
+            [("public", "sales_mv", "total", "numeric", 1)],
+            [], [], [],
+        )
+        assert db.get_schema_tree()[0]["tables"][0]["columns"][0]["name"] == "total"
+
+    # ── overloading: the reason routines needed an OID at all ──────────
+
+    def test_overloads_are_distinguishable(self):
+        """
+        calc(integer) and calc(numeric) share a name.  Keyed on name alone
+        they were two identical rows; they must now differ by OID and by the
+        signature the tree displays.
+        """
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [],
+            [("public", "calc", 20001, "integer", "f", "integer"),
+             ("public", "calc", 20002, "numeric", "f", "numeric")],
+        )
+        fns = db.get_schema_tree()[0]["functions"]
+        assert len(fns) == 2
+        assert {f["oid"] for f in fns} == {20001, 20002}
+        assert {f["signature"] for f in fns} == {"calc(integer)", "calc(numeric)"}
+
+    def test_signature_includes_arguments(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [],
+            [("public", "f", 1, "a integer, b text", "f", "void")],
+        )
+        fn = db.get_schema_tree()[0]["functions"][0]
+        assert fn["signature"] == "f(a integer, b text)"
+        assert fn["arguments"] == "a integer, b text"
+
+    def test_signature_of_zero_argument_routine(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "f", 1, "", "f", "void")],
+        )
+        assert db.get_schema_tree()[0]["functions"][0]["signature"] == "f()"
+
+    def test_null_arguments_become_empty_string(self):
+        """pg_get_function_identity_arguments() can return NULL."""
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "f", 1, None, "f", "void")],
+        )
+        fn = db.get_schema_tree()[0]["functions"][0]
+        assert fn["arguments"] == ""
+        assert fn["signature"] == "f()"
+
+    def test_null_return_type_becomes_empty_string(self):
+        """pg_get_function_result() returns NULL for a procedure."""
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "p", 1, "", "p", None)],
+        )
+        assert db.get_schema_tree()[0]["functions"][0]["return_type"] == ""
+
+    # ── prokind → label, and whether source can be fetched ─────────────
+
+    def test_procedure_is_labelled_procedure(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "p", 1, "", "p", None)],
+        )
+        assert db.get_schema_tree()[0]["functions"][0]["type"] == "PROCEDURE"
+
+    def test_window_function_is_labelled_window(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "w", 1, "", "w", "integer")],
+        )
+        assert db.get_schema_tree()[0]["functions"][0]["type"] == "WINDOW"
+
+    def test_unknown_prokind_falls_back_to_function(self):
+        """A prokind from a future server must not break the tree."""
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "x", 1, "", "?", "integer")],
+        )
+        assert db.get_schema_tree()[0]["functions"][0]["type"] == "FUNCTION"
+
+    def test_aggregate_is_marked_as_having_no_source(self):
+        """
+        pg_get_functiondef() raises on an aggregate.  The flag is what stops
+        the UI offering an action that can only fail.
+        """
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "agg", 1, "integer", "a", "integer")],
+        )
+        fn = db.get_schema_tree()[0]["functions"][0]
+        assert fn["type"] == "AGGREGATE"
+        assert fn["has_source"] is False
+
+    def test_plain_function_has_source(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "f", 1, "", "f", "integer")],
+        )
+        assert db.get_schema_tree()[0]["functions"][0]["has_source"] is True
+
+    def test_procedure_has_source(self):
+        db, _, cur = _make_connected_db()
+        self._mock_fetchall_sequence(
+            cur, [], [], [], [], [("public", "p", 1, "", "p", None)],
+        )
+        assert db.get_schema_tree()[0]["functions"][0]["has_source"] is True
 
 
 
@@ -805,3 +956,397 @@ class TestTerminateConnections:
     def test_raises_when_not_connected(self):
         with pytest.raises(RuntimeError, match="Not connected"):
             DatabaseManager().terminate_connections()
+
+
+# ---------------------------------------------------------------------------
+# quote_ident()
+# ---------------------------------------------------------------------------
+
+class TestQuoteIdent:
+    """
+    A definition is fetched so it can be edited and run again.  An identifier
+    that does not survive that round trip makes the whole feature a trap.
+    """
+
+    def test_wraps_in_double_quotes(self):
+        assert quote_ident("users") == '"users"'
+
+    def test_preserves_spaces(self):
+        assert quote_ident("Order Details") == '"Order Details"'
+
+    def test_preserves_case(self):
+        assert quote_ident("MyView") == '"MyView"'
+
+    def test_doubles_an_embedded_quote(self):
+        assert quote_ident('we"ird') == '"we""ird"'
+
+    def test_doubles_every_embedded_quote(self):
+        assert quote_ident('a"b"c') == '"a""b""c"'
+
+    def test_empty_identifier(self):
+        assert quote_ident("") == '""'
+
+
+# ---------------------------------------------------------------------------
+# server_version
+# ---------------------------------------------------------------------------
+
+class TestServerVersion:
+    def test_reports_the_drivers_version(self):
+        db, conn, _ = _make_connected_db()
+        conn.server_version = 160002
+        assert db.server_version == 160002
+
+    def test_zero_when_not_connected(self):
+        assert DatabaseManager().server_version == 0
+
+    def test_zero_when_driver_reports_none(self):
+        db, conn, _ = _make_connected_db()
+        conn.server_version = None
+        assert db.server_version == 0
+
+    def test_zero_when_driver_reports_nonsense(self):
+        db, conn, _ = _make_connected_db()
+        conn.server_version = "not a version"
+        assert db.server_version == 0
+
+
+# ---------------------------------------------------------------------------
+# _routines_sql() — version-dependent catalog query
+# ---------------------------------------------------------------------------
+
+class TestRoutinesSql:
+    """
+    prokind replaced proisagg/proiswindow in PostgreSQL 11.  Naming a column
+    the server does not have is a parse error, so the wrong query here does
+    not degrade — it empties the tree of every routine.
+    """
+
+    def test_modern_server_uses_prokind(self):
+        db, conn, _ = _make_connected_db()
+        conn.server_version = 160000
+        assert db._routines_sql() is SCHEMA_ROUTINES_SQL
+
+    def test_pre_11_server_uses_the_boolean_columns(self):
+        db, conn, _ = _make_connected_db()
+        conn.server_version = 100000        # PostgreSQL 10
+        assert db._routines_sql() is SCHEMA_ROUTINES_PRE11_SQL
+
+    def test_boundary_version_uses_prokind(self):
+        db, conn, _ = _make_connected_db()
+        conn.server_version = PROKIND_MIN_SERVER_VERSION
+        assert db._routines_sql() is SCHEMA_ROUTINES_SQL
+
+    def test_one_below_boundary_uses_the_boolean_columns(self):
+        db, conn, _ = _make_connected_db()
+        conn.server_version = PROKIND_MIN_SERVER_VERSION - 1
+        assert db._routines_sql() is SCHEMA_ROUTINES_PRE11_SQL
+
+    def test_unknown_version_uses_the_modern_query(self):
+        """
+        Zero means "the driver did not say", not "ancient".  Guessing old
+        would break every supported server to accommodate a rare unsupported
+        one.
+        """
+        db, conn, _ = _make_connected_db()
+        conn.server_version = None
+        assert db.server_version == 0
+        assert db._routines_sql() is SCHEMA_ROUTINES_SQL
+
+    def test_the_two_queries_reference_the_right_columns(self):
+        assert "prokind" in SCHEMA_ROUTINES_SQL
+        assert "proisagg" not in SCHEMA_ROUTINES_SQL
+        assert "proisagg" in SCHEMA_ROUTINES_PRE11_SQL
+        assert "proiswindow" in SCHEMA_ROUTINES_PRE11_SQL
+        assert "prokind" not in SCHEMA_ROUTINES_PRE11_SQL
+
+    def test_both_queries_select_the_same_six_columns(self):
+        """The row unpacking in get_schema_tree() serves both."""
+        for sql in (SCHEMA_ROUTINES_SQL, SCHEMA_ROUTINES_PRE11_SQL):
+            assert "p.oid" in sql
+            assert "pg_get_function_identity_arguments" in sql
+            assert "pg_get_function_result" in sql
+
+
+# ---------------------------------------------------------------------------
+# _scalar_guarded() — savepoint containment
+# ---------------------------------------------------------------------------
+
+def _executed(cur):
+    """Every SQL string passed to cur.execute(), in order."""
+    return [c.args[0] for c in cur.execute.call_args_list]
+
+
+class TestScalarGuarded:
+    """
+    These lookups share the connection the user runs queries on.  With
+    autocommit off a failed statement aborts the surrounding transaction and
+    every later statement in it — so an unguarded lookup for an object
+    somebody has just dropped silently discards uncommitted work.
+    """
+
+    def test_returns_the_first_column(self):
+        db, _, _ = _make_connected_db(fetchone_return=("value",))
+        assert db._scalar_guarded("SELECT 1", ()) == "value"
+
+    def test_returns_none_when_no_row(self):
+        db, _, _ = _make_connected_db(fetchone_return=None)
+        assert db._scalar_guarded("SELECT 1", ()) is None
+
+    def test_passes_parameters_to_the_driver(self):
+        """Bound, not interpolated: the OID never reaches the SQL text."""
+        db, _, cur = _make_connected_db(fetchone_return=("x",), autocommit=True)
+        db._scalar_guarded("SELECT %s", (42,))
+        assert cur.execute.call_args_list[0].args[1] == (42,)
+
+    def test_requires_a_connection(self):
+        with pytest.raises(RuntimeError):
+            DatabaseManager()._scalar_guarded("SELECT 1", ())
+
+    # ── autocommit on: nothing to protect ──────────────────────────────
+
+    def test_autocommit_issues_no_savepoint(self):
+        db, _, cur = _make_connected_db(fetchone_return=("x",), autocommit=True)
+        db._scalar_guarded("SELECT 1", ())
+        assert not any("SAVEPOINT" in s for s in _executed(cur))
+
+    def test_autocommit_failure_issues_no_rollback(self):
+        db, _, cur = _make_connected_db(autocommit=True)
+        cur.execute.side_effect = _psycopg2.Error("boom")
+        with pytest.raises(_psycopg2.Error):
+            db._scalar_guarded("SELECT 1", ())
+        assert not any("SAVEPOINT" in s for s in _executed(cur))
+
+    # ── autocommit off: the lookup must be containable ─────────────────
+
+    def test_savepoint_brackets_the_query(self):
+        db, _, cur = _make_connected_db(fetchone_return=("x",), autocommit=False)
+        db._scalar_guarded("SELECT 1", ())
+        sqls = _executed(cur)
+        assert sqls[0].startswith("SAVEPOINT ")
+        assert sqls[-1].startswith("RELEASE SAVEPOINT ")
+
+    def test_savepoint_is_released_on_success(self):
+        db, _, cur = _make_connected_db(fetchone_return=("x",), autocommit=False)
+        db._scalar_guarded("SELECT 1", ())
+        assert sum(s.startswith("RELEASE SAVEPOINT ") for s in _executed(cur)) == 1
+
+    def test_failure_rolls_back_to_the_savepoint(self):
+        db, _, cur = _make_connected_db(autocommit=False)
+        cur.execute.side_effect = [
+            None,                          # SAVEPOINT
+            _psycopg2.Error("boom"),       # the lookup
+            None,                          # ROLLBACK TO SAVEPOINT
+            None,                          # RELEASE SAVEPOINT
+        ]
+        with pytest.raises(_psycopg2.Error):
+            db._scalar_guarded("SELECT 1", ())
+        sqls = _executed(cur)
+        assert any(s.startswith("ROLLBACK TO SAVEPOINT ") for s in sqls)
+        assert any(s.startswith("RELEASE SAVEPOINT ") for s in sqls)
+
+    def test_rollback_precedes_release(self):
+        db, _, cur = _make_connected_db(autocommit=False)
+        cur.execute.side_effect = [None, _psycopg2.Error("boom"), None, None]
+        with pytest.raises(_psycopg2.Error):
+            db._scalar_guarded("SELECT 1", ())
+        sqls = _executed(cur)
+        rollback = next(i for i, s in enumerate(sqls) if s.startswith("ROLLBACK TO"))
+        release = next(i for i, s in enumerate(sqls) if s.startswith("RELEASE"))
+        assert rollback < release
+
+    def test_the_error_still_reaches_the_caller(self):
+        """Containing the damage must not swallow the diagnosis."""
+        db, _, cur = _make_connected_db(autocommit=False)
+        cur.execute.side_effect = [None, _psycopg2.Error("boom"), None, None]
+        with pytest.raises(_psycopg2.Error):
+            db._scalar_guarded("SELECT 1", ())
+
+    def test_guarded_even_before_a_transaction_is_open(self):
+        """
+        in_transaction is False until a statement runs, but with autocommit
+        off this statement is the one that opens the transaction — a failure
+        would leave it aborted behind us.  The guard keys on autocommit for
+        exactly this case.
+        """
+        db, conn, cur = _make_connected_db(fetchone_return=("x",), autocommit=False)
+        conn.status = 0                     # STATUS_READY — nothing open yet
+        assert db.in_transaction is False
+        db._scalar_guarded("SELECT 1", ())
+        assert any(s.startswith("SAVEPOINT ") for s in _executed(cur))
+
+    def test_same_savepoint_name_throughout(self):
+        db, _, cur = _make_connected_db(fetchone_return=("x",), autocommit=False)
+        db._scalar_guarded("SELECT 1", ())
+        names = {s.split()[-1] for s in _executed(cur) if "SAVEPOINT" in s}
+        assert len(names) == 1
+
+
+# ---------------------------------------------------------------------------
+# get_routine_definition()
+# ---------------------------------------------------------------------------
+
+_FUNCDEF = (
+    "CREATE OR REPLACE FUNCTION public.calc(a integer)\n"
+    " RETURNS integer\n LANGUAGE sql\nAS $function$ SELECT a $function$\n"
+)
+
+
+class TestGetRoutineDefinition:
+    def test_returns_the_servers_statement_unchanged(self):
+        """
+        pg_get_functiondef() already emits a complete CREATE OR REPLACE.
+        Rewriting it would only risk corrupting a valid statement.
+        """
+        db, _, _ = _make_connected_db(fetchone_return=(_FUNCDEF,))
+        assert db.get_routine_definition(20001) == _FUNCDEF
+
+    def test_result_is_runnable_as_a_replacement(self):
+        db, _, _ = _make_connected_db(fetchone_return=(_FUNCDEF,))
+        assert db.get_routine_definition(20001).startswith("CREATE OR REPLACE FUNCTION")
+
+    def test_binds_the_oid_as_a_parameter(self):
+        db, _, cur = _make_connected_db(fetchone_return=(_FUNCDEF,), autocommit=True)
+        db.get_routine_definition(20001)
+        sql, params = cur.execute.call_args_list[0].args[:2]
+        assert params == (20001,)
+        assert "%s" in sql
+        assert "20001" not in sql
+
+    def test_requires_a_connection(self):
+        with pytest.raises(RuntimeError):
+            DatabaseManager().get_routine_definition(1)
+
+    def test_lookup_error_when_the_oid_has_no_row(self):
+        db, _, _ = _make_connected_db(fetchone_return=None)
+        with pytest.raises(LookupError):
+            db.get_routine_definition(999)
+
+    def test_lookup_error_when_the_definition_is_null(self):
+        db, _, _ = _make_connected_db(fetchone_return=(None,))
+        with pytest.raises(LookupError):
+            db.get_routine_definition(999)
+
+    def test_lookup_error_when_the_definition_is_empty(self):
+        db, _, _ = _make_connected_db(fetchone_return=("",))
+        with pytest.raises(LookupError):
+            db.get_routine_definition(999)
+
+    def test_driver_error_propagates(self):
+        db, _, cur = _make_connected_db(autocommit=True)
+        cur.execute.side_effect = _psycopg2.Error("is an aggregate function")
+        with pytest.raises(_psycopg2.Error):
+            db.get_routine_definition(1)
+
+
+# ---------------------------------------------------------------------------
+# get_view_definition()
+# ---------------------------------------------------------------------------
+
+class TestGetViewDefinition:
+    """
+    pg_get_viewdef() returns the SELECT body alone — not a statement.  The
+    CREATE has to be rebuilt around it, which is where the quoting and the
+    semicolon handling have to be right.
+    """
+
+    def _db(self, body=" SELECT id, name FROM users;"):
+        db, _, _ = _make_connected_db(fetchone_return=(body,))
+        return db
+
+    def test_wraps_the_body_in_create_or_replace(self):
+        sql = self._db().get_view_definition("public", "v_users", 30002)
+        assert sql.startswith('CREATE OR REPLACE VIEW "public"."v_users" AS')
+
+    def test_keeps_the_body(self):
+        sql = self._db().get_view_definition("public", "v_users", 30002)
+        assert "SELECT id, name FROM users" in sql
+
+    def test_statement_is_terminated(self):
+        sql = self._db().get_view_definition("public", "v_users", 30002)
+        assert sql.rstrip().endswith(";")
+
+    def test_does_not_double_the_semicolon(self):
+        """pg_get_viewdef() ends the body with one; appending gives two."""
+        sql = self._db("SELECT 1;").get_view_definition("public", "v", 1)
+        assert not sql.rstrip().endswith(";;")
+
+    def test_adds_a_semicolon_when_the_body_lacks_one(self):
+        sql = self._db("SELECT 1").get_view_definition("public", "v", 1)
+        assert sql.rstrip().endswith(";")
+
+    def test_quotes_identifiers_that_need_it(self):
+        sql = self._db().get_view_definition("My Schema", "Order Details", 1)
+        assert '"My Schema"."Order Details"' in sql
+
+    def test_escapes_an_embedded_quote(self):
+        sql = self._db().get_view_definition("public", 'we"ird', 1)
+        assert '"we""ird"' in sql
+
+    def test_binds_the_oid_as_a_parameter(self):
+        db, _, cur = _make_connected_db(fetchone_return=("SELECT 1",),
+                                        autocommit=True)
+        db.get_view_definition("public", "v", 30002)
+        sql, params = cur.execute.call_args_list[0].args[:2]
+        assert params == (30002,)
+        assert "%s" in sql
+
+    def test_requires_a_connection(self):
+        with pytest.raises(RuntimeError):
+            DatabaseManager().get_view_definition("public", "v", 1)
+
+    def test_lookup_error_when_the_oid_has_no_row(self):
+        db, _, _ = _make_connected_db(fetchone_return=None)
+        with pytest.raises(LookupError):
+            db.get_view_definition("public", "v", 999)
+
+    def test_lookup_error_when_the_body_is_empty(self):
+        db, _, _ = _make_connected_db(fetchone_return=("",))
+        with pytest.raises(LookupError):
+            db.get_view_definition("public", "v", 999)
+
+    def test_driver_error_propagates(self):
+        db, _, cur = _make_connected_db(autocommit=True)
+        cur.execute.side_effect = _psycopg2.Error("permission denied")
+        with pytest.raises(_psycopg2.Error):
+            db.get_view_definition("public", "v", 1)
+
+    # ── materialised views: no replace form exists ─────────────────────
+
+    def test_materialised_view_is_not_create_or_replace(self):
+        """
+        PostgreSQL has no CREATE OR REPLACE MATERIALIZED VIEW.  Emitting one
+        would hand the user a statement that cannot run.
+
+        Asserted against the statement alone: the comment above it names the
+        missing form in prose, which is not the same as emitting it.
+        """
+        sql = self._db().get_view_definition("public", "mv", 1, materialized=True)
+        statement = sql[sql.index("CREATE MATERIALIZED VIEW"):]
+        assert "CREATE OR REPLACE" not in statement
+
+    def test_materialised_view_uses_the_plain_create(self):
+        sql = self._db().get_view_definition("public", "mv", 1, materialized=True)
+        assert 'CREATE MATERIALIZED VIEW "public"."mv" AS' in sql
+
+    def test_materialised_view_warns_before_the_statement(self):
+        """The warning has to be read before the statement is run, not after."""
+        sql = self._db().get_view_definition("public", "mv", 1, materialized=True)
+        assert sql.startswith("--")
+        assert sql.index("--") < sql.index("CREATE MATERIALIZED VIEW")
+
+    def test_materialised_view_warning_names_the_cost(self):
+        sql = self._db().get_view_definition("public", "mv", 1, materialized=True)
+        assert "DROP" in sql
+
+    def test_every_warning_line_is_a_comment(self):
+        """An un-commented prose line would be a syntax error on execute."""
+        sql = self._db().get_view_definition("public", "mv", 1, materialized=True)
+        preamble = sql.split("CREATE MATERIALIZED VIEW")[0]
+        for line in preamble.splitlines():
+            if line.strip():
+                assert line.lstrip().startswith("--"), line
+
+    def test_plain_view_carries_no_warning(self):
+        sql = self._db().get_view_definition("public", "v", 1)
+        assert not sql.startswith("--")

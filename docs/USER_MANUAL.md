@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.1.4
+**Version:** 1.1.5
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -628,7 +628,7 @@ The **Database Explorer** panel on the left side of the window shows a live tree
 
 ```
 public                          ← schema (bold)
-  ├── users  [T]                ← table [T] or view [V]
+  ├── users  [T]                ← table, view, or materialised view
   │     ├── Columns (3)
   │     │     id         integer
   │     │     name       text
@@ -638,13 +638,20 @@ public                          ← schema (bold)
   │     │     users_email_idx
   │     └── Foreign Keys (1)
   │           fk_users_role_id   ← hover to see: FOREIGN KEY (role_id)...
-  └── Functions / Procedures (1)
-        get_active_users   integer
+  └── Functions / Procedures (2)
+        get_active_users()          integer
+        calc(a numeric)             numeric
 ```
 
 - Click the **▶** arrow next to any node to expand it.
 - **Hover** over an index or foreign key name to see its full SQL definition in a tooltip.
-- Column data types are shown in the second column of the tree.
+- Column data types are shown in the second column of the tree, with their
+  modifiers — `character varying(50)`, not a bare `character varying`.
+- Tables, views, **and materialised views** are all listed. Hover a relation to
+  see which kind it is.
+- Routines are listed by **signature**, not by name. PostgreSQL allows
+  overloading, so `calc(a integer)` and `calc(a numeric)` are different
+  functions; showing the arguments is what tells them apart.
 
 ### 9.2 Generating Scripts from a Table or Schema
 
@@ -665,8 +672,42 @@ public                          ← schema (bold)
 | **UPDATE script** | `UPDATE … SET` with a `col = ` placeholder for every column and a `WHERE` placeholder |
 | **DELETE script** | `DELETE FROM … WHERE` seeded with the table's first column |
 | **🗺 Mind Map from here** | Opens a focused mind map with BFS wave-reveal starting from this table (see [§11.2](#112-mind-map-from-a-table)) |
+| **📄 Show definition** | *Views and materialised views only.* Opens the view's source in a new editor tab |
 
 The script is inserted at the cursor position in the active editor tab but **not executed**. Fill in the placeholder values and press **F5** when ready.
+
+**Right-click any function or procedure** to open its own menu.
+
+| Menu option | What it does |
+|---|---|
+| **📄 Show definition** | Opens the routine's `CREATE OR REPLACE` statement in a new editor tab |
+
+#### Editing a view, function, or procedure
+
+**Show definition** opens the object's source in a **new** editor tab, named
+after the object — never the tab you are currently editing, since a definition
+is a whole statement and would overwrite your work.
+
+What comes back is directly runnable, so editing an object is a normal round
+trip: show the definition, change it, press **F5**.
+
+- **Functions and procedures** come back as `CREATE OR REPLACE FUNCTION` /
+  `CREATE OR REPLACE PROCEDURE`, exactly as the server renders them.
+- **Views** come back as `CREATE OR REPLACE VIEW`, rebuilt around the stored
+  query.
+- **Materialised views** come back as plain `CREATE MATERIALIZED VIEW` under a
+  comment explaining why. PostgreSQL has no `CREATE OR REPLACE MATERIALIZED
+  VIEW`: changing one means dropping and recreating it, which discards the
+  stored rows along with every index, grant and policy on it. Read the comment
+  before running the statement.
+- **Aggregates** have no source form — the server cannot render one — so the
+  menu entry is shown greyed out rather than offering an action that can only
+  fail.
+
+If the object was dropped since the tree was last refreshed, the lookup fails
+with a message in the Schema Browser status line. When auto-commit is off, a
+failed lookup is contained and **does not abort your open transaction** — any
+uncommitted work is safe.
 
 **Example — right-clicking a `users` table with columns `id`, `name`, `email`:**
 

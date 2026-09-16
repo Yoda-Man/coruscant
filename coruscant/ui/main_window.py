@@ -410,6 +410,7 @@ class MainWindow(QMainWindow):
 
         self._schema_browser = SchemaBrowser(self._db)
         self._schema_browser.insert_sql.connect(self._on_schema_insert_sql)
+        self._schema_browser.open_sql_tab.connect(self._on_schema_open_sql_tab)
         self._schema_browser.schema_loaded.connect(self._on_schema_loaded)
         self._schema_browser.autocomplete_changed.connect(self._on_autocomplete_changed)
         self._schema_browser.line_numbers_changed.connect(self._on_line_numbers_changed)
@@ -1063,6 +1064,20 @@ class MainWindow(QMainWindow):
         tab = self._current_editor_tab()
         if tab:
             tab.insert_sql(sql)
+
+    def _on_schema_open_sql_tab(self, title: str, sql: str) -> None:
+        """
+        Open an object's source in a tab of its own, named for the object.
+
+        Deliberately not insert_sql(): a definition is a whole statement, and
+        inserting it would overwrite whatever the user is editing.
+        """
+        tab = self._add_editor_tab(sql)
+        idx = self._editor_tabs.indexOf(tab)
+        if idx != -1:
+            self._editor_tabs.setTabText(idx, title)
+            # Auto-naming on save would otherwise replace the object name.
+            tab.setProperty("manually_named", True)
 
     def _on_history_selected(self, sql: str) -> None:
         tab = self._current_editor_tab()

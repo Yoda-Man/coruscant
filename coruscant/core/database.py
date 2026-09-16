@@ -72,6 +72,133 @@ WHERE n.nspname = %s AND c.relname = %s
 """
 
 
+# ── Schema-tree catalog queries ──────────────────────────────────────────
+#
+# These read pg_catalog rather than information_schema, for three reasons:
+#
+#   * information_schema.tables omits materialised views — they are not in
+#     the SQL standard — so they were missing from the tree entirely.
+#   * information_schema.routines identifies a routine by name, and a name is
+#     not unique: PostgreSQL allows overloading.  calc(int) and calc(numeric)
+#     arrived as two rows nothing could tell apart, let alone fetch the source
+#     of.  pg_proc carries the OID, the one stable handle for that.
+#   * The OID is also what the definition lookups below are keyed on.
+#
+# has_table_privilege() preserves the visibility rule information_schema
+# applied for free: a relation the current role holds no privilege on stays
+# out of the tree.  None of these queries take parameters, so a literal % in
+# a pattern would be safe here — there is none, but keep it that way.
+
+SCHEMA_RELATIONS_SQL = """
+SELECT n.nspname,
+       c.relname,
+       c.oid,
+       CASE c.relkind
+           WHEN 'r' THEN 'BASE TABLE'
+           WHEN 'p' THEN 'BASE TABLE'
+           WHEN 'v' THEN 'VIEW'
+           WHEN 'm' THEN 'MATERIALIZED VIEW'
+           WHEN 'f' THEN 'FOREIGN'
+       END AS relation_type
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND pg_catalog.has_table_privilege(
+          c.oid, 'SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER')
+ORDER BY n.nspname, relation_type, c.relname
+"""
+
+# format_type() renders the declared type the way the server would print it,
+# so a varchar(50) reads as varchar(50) rather than information_schema's bare
+# "character varying".  attnum > 0 skips system columns; attisdropped skips
+# the tombstones a dropped column leaves behind.
+SCHEMA_COLUMNS_SQL = """
+SELECT n.nspname,
+       c.relname,
+       a.attname,
+       pg_catalog.format_type(a.atttypid, a.atttypmod),
+       a.attnum
+FROM pg_catalog.pg_attribute a
+JOIN pg_catalog.pg_class c     ON c.oid = a.attrelid
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+  AND pg_catalog.has_table_privilege(
+          c.oid, 'SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER')
+ORDER BY n.nspname, c.relname, a.attnum
+"""
+
+# pg_proc.prokind arrived in PostgreSQL 11, replacing the proisagg and
+# proiswindow booleans.  Referencing a column the server does not have is a
+# parse error, not an empty result, so the pre-11 variant is a separate
+# statement chosen by server version rather than one clever portable query.
+SCHEMA_ROUTINES_SQL = """
+SELECT n.nspname,
+       p.proname,
+       p.oid,
+       pg_catalog.pg_get_function_identity_arguments(p.oid),
+       p.prokind,
+       pg_catalog.pg_get_function_result(p.oid)
+FROM pg_catalog.pg_proc p
+JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+ORDER BY n.nspname, p.proname
+"""
+
+SCHEMA_ROUTINES_PRE11_SQL = """
+SELECT n.nspname,
+       p.proname,
+       p.oid,
+       pg_catalog.pg_get_function_identity_arguments(p.oid),
+       CASE WHEN p.proisagg    THEN 'a'
+            WHEN p.proiswindow THEN 'w'
+            ELSE 'f'
+       END,
+       pg_catalog.pg_get_function_result(p.oid)
+FROM pg_catalog.pg_proc p
+JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+ORDER BY n.nspname, p.proname
+"""
+
+#: Server version at which pg_proc.prokind replaced proisagg/proiswindow.
+PROKIND_MIN_SERVER_VERSION = 110000
+
+#: pg_proc.prokind → the label shown in the tree.
+PROKIND_LABELS = {
+    "f": "FUNCTION",
+    "p": "PROCEDURE",
+    "a": "AGGREGATE",
+    "w": "WINDOW",
+}
+
+#: prokind values pg_get_functiondef() refuses.  Asking for an aggregate's
+#: definition raises "is an aggregate function" rather than returning text,
+#: so the tree marks these unavailable instead of surfacing a driver error.
+PROKIND_WITHOUT_SOURCE = frozenset({"a"})
+
+# pg_get_functiondef() returns a complete CREATE OR REPLACE statement, ready
+# to run.  pg_get_viewdef() does not: it returns the SELECT body alone, which
+# get_view_definition() wraps.
+ROUTINE_DEFINITION_SQL = "SELECT pg_catalog.pg_get_functiondef(%s::oid)"
+
+VIEW_DEFINITION_SQL = "SELECT pg_catalog.pg_get_viewdef(%s::oid, true)"
+
+
+def quote_ident(name: str) -> str:
+    """
+    Double-quote an identifier so it survives a round trip.
+
+    A view called "Order Details", or one holding a quote of its own, has
+    to come back as something the server will parse when the edited
+    definition is run again.
+    """
+    return '"' + name.replace('"', '""') + '"'
+
+
 class QueryResult:
     """Value object returned for each executed statement."""
 
@@ -253,6 +380,21 @@ class DatabaseManager:
         """
         self._ensure_connected()
         self._conn.autocommit = enabled  # type: ignore[union-attr]
+
+    @property
+    def server_version(self) -> int:
+        """
+        The server version as an integer — 160002 for PostgreSQL 16.2.
+
+        Returns 0 when not connected, or when the driver reports nothing, so
+        callers must read 0 as "unknown" rather than "ancient".
+        """
+        if not self.is_connected:
+            return 0
+        try:
+            return int(self._conn.server_version)  # type: ignore[union-attr]
+        except (AttributeError, TypeError, ValueError):
+            return 0
 
     @property
     def in_transaction(self) -> bool:
@@ -648,8 +790,13 @@ class DatabaseManager:
 
     def get_schema_tree(self) -> list[dict]:
         """
-        Build a nested schema/table/column/index/FK/function tree from
-        information_schema and pg_* system catalogs.
+        Build a nested schema/relation/column/index/FK/routine tree from
+        the pg_* system catalogs.
+
+        Relations cover tables, views, materialised views and foreign tables;
+        routines cover functions, procedures, aggregates and window functions.
+        Both carry an "oid", which get_view_definition() and
+        get_routine_definition() take to fetch source.
 
         Returns a list of schema dicts — see schema_browser for the shape.
         Raises RuntimeError if not connected.
@@ -658,20 +805,10 @@ class DatabaseManager:
 
         with self._conn.cursor() as cur:  # type: ignore[union-attr]
 
-            cur.execute("""
-                SELECT table_schema, table_name, table_type
-                FROM   information_schema.tables
-                WHERE  table_schema NOT IN ('pg_catalog', 'information_schema')
-                ORDER  BY table_schema, table_type, table_name
-            """)
-            table_rows = cur.fetchall()
+            cur.execute(SCHEMA_RELATIONS_SQL)
+            relation_rows = cur.fetchall()
 
-            cur.execute("""
-                SELECT table_schema, table_name, column_name, data_type, ordinal_position
-                FROM   information_schema.columns
-                WHERE  table_schema NOT IN ('pg_catalog', 'information_schema')
-                ORDER  BY table_schema, table_name, ordinal_position
-            """)
+            cur.execute(SCHEMA_COLUMNS_SQL)
             column_rows = cur.fetchall()
 
             cur.execute("""
@@ -710,12 +847,7 @@ class DatabaseManager:
             except psycopg2.Error:
                 fk_rows = []
 
-            cur.execute("""
-                SELECT routine_schema, routine_name, routine_type, data_type
-                FROM   information_schema.routines
-                WHERE  routine_schema NOT IN ('pg_catalog', 'information_schema')
-                ORDER  BY routine_schema, routine_type, routine_name
-            """)
+            cur.execute(self._routines_sql())
             fn_rows = cur.fetchall()
 
         # ── build lookup dicts ──────────────────────────────────────── #
@@ -738,15 +870,25 @@ class DatabaseManager:
             )
 
         fn_lookup: dict[str, list] = {}
-        for schema, name, ftype, rtype in fn_rows:
-            fn_lookup.setdefault(schema, []).append(
-                {"name": name, "type": ftype, "return_type": rtype or ""}
-            )
+        for schema, name, oid, args, prokind, rtype in fn_rows:
+            arguments = args or ""
+            fn_lookup.setdefault(schema, []).append({
+                "name":        name,
+                "oid":         oid,
+                "type":        PROKIND_LABELS.get(prokind, "FUNCTION"),
+                "arguments":   arguments,
+                # The tree shows the signature, not the name: overloads share
+                # a name and are otherwise indistinguishable on screen.
+                "signature":   f"{name}({arguments})",
+                "return_type": rtype or "",
+                "has_source":  prokind not in PROKIND_WITHOUT_SOURCE,
+            })
 
         tbl_lookup: dict[str, list] = {}
-        for schema, table, ttype in table_rows:
+        for schema, table, oid, ttype in relation_rows:
             tbl_lookup.setdefault(schema, []).append({
                 "name":         table,
+                "oid":          oid,
                 "type":         ttype,
                 "columns":      col_lookup.get((schema, table), []),
                 "indexes":      idx_lookup.get((schema, table), []),
@@ -765,3 +907,125 @@ class DatabaseManager:
             }
             for s in all_schemas
         ]
+
+    # ------------------------------------------------------------------ #
+    #  Object source                                                       #
+    # ------------------------------------------------------------------ #
+
+    #: Savepoint name for the definition lookups below.  Fixed rather than
+    #: generated: only one lookup runs at a time on a given connection.
+    _DEFINITION_SAVEPOINT = "coruscant_definition"
+
+    def _routines_sql(self) -> str:
+        """
+        The pg_proc query this server can actually parse.
+
+        prokind replaced proisagg/proiswindow in PostgreSQL 11, and naming a
+        column the server does not have is a parse error, not an empty
+        result.  An unknown version takes the modern query: everything that
+        predates prokind has been out of support for years, and guessing the
+        other way would break every current server to accommodate a rare old
+        one.
+        """
+        version = self.server_version
+        if 0 < version < PROKIND_MIN_SERVER_VERSION:
+            return SCHEMA_ROUTINES_PRE11_SQL
+        return SCHEMA_ROUTINES_SQL
+
+    def _scalar_guarded(self, sql: str, params: tuple):
+        """
+        Run a one-value catalog query without wrecking an open transaction.
+
+        These lookups share the connection the user runs queries on.  With
+        autocommit off, a failed statement aborts the entire surrounding
+        transaction and every later statement in it fails too — so asking for
+        the source of a routine somebody has just dropped would silently
+        throw away uncommitted work.  A savepoint confines the failure to the
+        lookup.
+
+        The guard keys on autocommit rather than in_transaction: with
+        autocommit off this statement *starts* the transaction when none is
+        open yet, and a failure would leave that aborted transaction behind.
+
+        Returns the single value, or None when the query returns no row.
+        Raises RuntimeError if not connected, DatabaseError if the query
+        fails.
+        """
+        self._ensure_connected()
+        guarded = not self._conn.autocommit      # type: ignore[union-attr]
+        savepoint = self._DEFINITION_SAVEPOINT
+
+        with self._conn.cursor() as cur:         # type: ignore[union-attr]
+            if guarded:
+                cur.execute(f"SAVEPOINT {savepoint}")
+            try:
+                cur.execute(sql, params)
+                row = cur.fetchone()
+            except psycopg2.Error as exc:
+                first_line = str(exc).splitlines()[0] if str(exc) else exc
+                log.error("Definition lookup failed: %s", first_line)
+                if guarded:
+                    cur.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                    cur.execute(f"RELEASE SAVEPOINT {savepoint}")
+                raise
+            if guarded:
+                cur.execute(f"RELEASE SAVEPOINT {savepoint}")
+
+        return row[0] if row else None
+
+    def get_routine_definition(self, oid: int) -> str:
+        """
+        Return the CREATE OR REPLACE statement for the routine with this OID.
+
+        pg_get_functiondef() emits a complete, directly re-runnable
+        statement, which is the whole point: read it, edit it, execute it.
+        Aggregates have no such form — the server raises rather than
+        returning text — so callers check the "has_source" flag that
+        get_schema_tree() sets instead of calling here and catching.
+
+        Raises RuntimeError if not connected, LookupError if the OID has no
+        routine source, DatabaseError if the server refuses.
+        """
+        definition = self._scalar_guarded(ROUTINE_DEFINITION_SQL, (oid,))
+        if not definition:
+            raise LookupError(f"no routine source for OID {oid}")
+        log.debug("Routine definition fetched  oid=%s  chars=%d",
+                  oid, len(definition))
+        return definition
+
+    def get_view_definition(self, schema: str, name: str, oid: int,
+                            materialized: bool = False) -> str:
+        """
+        Return a runnable CREATE statement for the view with this OID.
+
+        pg_get_viewdef() returns the SELECT body alone, so the CREATE has to
+        be rebuilt around it — unlike routines, where the server hands back a
+        complete statement.
+
+        A materialised view gets CREATE, not CREATE OR REPLACE, because
+        PostgreSQL has no replace form for one.  Editing it really means DROP
+        then CREATE, which throws away the stored rows along with every index
+        and grant, so the statement comes back under a comment saying so
+        rather than posing as a safe in-place edit.
+
+        Raises RuntimeError if not connected, LookupError if the OID has no
+        view source, DatabaseError if the server refuses.
+        """
+        body = self._scalar_guarded(VIEW_DEFINITION_SQL, (oid,))
+        if not body:
+            raise LookupError(f"no view source for OID {oid}")
+
+        body = body.rstrip().rstrip(";")
+        target = f"{quote_ident(schema)}.{quote_ident(name)}"
+        log.debug("View definition fetched  %s  materialized=%s  chars=%d",
+                  target, materialized, len(body))
+
+        if materialized:
+            return (
+                f"-- {target} is a materialised view.\n"
+                "-- PostgreSQL has no CREATE OR REPLACE MATERIALIZED VIEW.\n"
+                "-- Changing it means DROP then CREATE, which discards the\n"
+                "-- stored rows and every index, grant and policy on it.\n"
+                f"CREATE MATERIALIZED VIEW {target} AS\n{body};\n"
+            )
+        return f"CREATE OR REPLACE VIEW {target} AS\n{body};\n"

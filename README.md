@@ -91,7 +91,7 @@ Coruscant solves this directly. Every `SELECT` produces its own dedicated, persi
 
 | Dependency | Minimum version | Notes |
 |---|---|---|
-| Python | 3.10 | Uses modern type annotations |
+| Python | 3.14 | The version every build and test run is verified on |
 | PySide6 | 6.5 | Qt6 bindings |
 | psycopg2-binary | 2.9 | PostgreSQL adapter |
 | sqlparse | 0.4 | Optional — needed for Format SQL only |

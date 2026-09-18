@@ -144,7 +144,7 @@ its own; it connects directly to your PostgreSQL instance.
 |---|---|
 | Operating System | Windows 10/11, macOS 11+, or Linux |
 | PostgreSQL server | Any version from 9.x to 16+ |
-| Python | 3.10+ *(only required when running from source)* |
+| Python | 3.14+ *(only required when running from source)* |
 | networkx | 2.6+ *(required for Support Script Manager)* |
 | Screen resolution | 1280 × 720 minimum (1920 × 1080 recommended) |
 

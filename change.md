@@ -1,5 +1,71 @@
 # Changelog
 
+### 1.1.6
+
+Two fixes to the editor tabs and the toolbar, and the suite's first tests that
+drive a real Qt window.
+
+**The close button on editor tabs never existed**
+
+The user manual has said "Click the **×** on the tab, or press **Ctrl+W**"
+since it was written. Only Ctrl+W worked, and nothing about the source
+suggested otherwise:
+
+```python
+self._editor_tabs.setTabsClosable(True)      # set on the default tab bar…
+self._editor_tabs.setMovable(True)
+self._editor_tabs.setTabBar(EditorTabBar())  # …which is then thrown away
+```
+
+Both flags live on the tab bar, so installing a replacement discarded them:
+the close buttons never rendered and tabs could not be dragged. Every call a
+reader would look for was present, and neither took effect. The result tabs
+built a few lines below already had the order right. The flags now follow
+`setTabBar()`.
+
+**Closing a tab could destroy another tab's results**
+
+`_close_editor_tab` looked a tab's result area up by index in the result
+stack. Tab order and stack order match only until a tab is dragged, at which
+point closing one tab removed a different tab's results and left the survivor
+pointing at a deleted widget. It was unreachable while the movable flag was
+being discarded, and live the moment that was fixed — so the two had to be
+fixed together. The area is now read off the tab itself, and the closed tab is
+deleted rather than leaked.
+
+**Connections and Disconnect share a toolbar slot**
+
+Connections was previously always visible, on the reasoning that switching
+profiles should not need extra steps. It is now hidden while connected and
+returns on disconnect, so exactly one connection action is offered at a time.
+The trade is explicit: switching profiles means disconnecting first. The
+status chip at the bottom of the window still opens the Connection Manager.
+
+**Tests that build a real window**
+
+Every previous UI test reads the AST. That catches a missing handler but not
+what Qt does with a call, and both defects above lived in that gap — the first
+especially, where a structural test would have found all three calls present
+and passed. `tests/test_ui_behaviour.py` builds a real `MainWindow` offscreen
+and asks Qt what it actually did. Each of the three fixes was reverted in turn
+and confirmed to fail the suite.
+
+These run in their own process. `test_worker.py` and `test_ui_ast.py`
+deliberately delete PySide6 from `sys.modules` so Qt-free code can be imported
+without it; dropping the last reference can finalise the shiboken extension
+underneath, and constructing a widget afterwards is undefined behaviour — in
+practice an access violation partway through `MainWindow.__init__`. The module
+skips unless `CORUSCANT_QT_TESTS=1`, and CI runs it as a separate step with a
+floor on passes, the same arrangement the live SQL tests already use:
+
+    CORUSCANT_QT_TESTS=1 pytest tests/test_ui_behaviour.py
+
+A plain `pytest` now reports 780 passed and 73 skipped. The skips are those 20
+Qt tests and the 53 live SQL tests, both of which need infrastructure a bare
+run does not have; the floor assertions in CI are what stop either from
+quietly skipping there.
+
+
 ### 1.1.5
 
 Object source in the Schema Browser. Right-click a function, procedure, view

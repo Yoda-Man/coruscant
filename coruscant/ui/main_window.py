@@ -441,10 +441,14 @@ class MainWindow(QMainWindow):
 
         # Editor tab widget
         self._editor_tabs = QTabWidget()
-        self._editor_tabs.setTabsClosable(True)
-        self._editor_tabs.setMovable(True)
         self._editor_tab_bar = EditorTabBar()
         self._editor_tabs.setTabBar(self._editor_tab_bar)
+        # After setTabBar(), never before: these flags live on the tab bar, and
+        # installing a new one discards whatever was set on the old. Set first,
+        # the close buttons never rendered and tabs could not be dragged — the
+        # result tabs below already had the order right.
+        self._editor_tabs.setTabsClosable(True)
+        self._editor_tabs.setMovable(True)
         self._editor_tab_bar.tab_manually_renamed.connect(
             self._on_editor_tab_manually_renamed
         )
@@ -571,11 +575,18 @@ class MainWindow(QMainWindow):
 
     def _close_editor_tab(self, index: int) -> None:
         if self._editor_tabs.count() > 1:
-            area = self._result_stack.widget(index)
-            self._result_stack.removeWidget(area)
-            if area:
-                area.deleteLater()
+            tab = self._editor_tabs.widget(index)
+            # Look the result area up on the tab itself, never by index. Tabs
+            # are movable, so tab order and stack order diverge the moment one
+            # is dragged — by index this closed a different tab's results and
+            # left the surviving tab pointing at a destroyed widget.
+            area = tab.property("result_area") if tab else None
             self._editor_tabs.removeTab(index)
+            if area is not None:
+                self._result_stack.removeWidget(area)
+                area.deleteLater()
+            if tab is not None:
+                tab.deleteLater()
         else:
             tab = self._editor_tabs.widget(index)
             if isinstance(tab, EditorTab):
@@ -675,8 +686,11 @@ class MainWindow(QMainWindow):
         )
         autocommit = self._act_autocommit.isChecked()
 
-        # Connections stays visible so users can switch profiles without extra steps.
-        self._act_connect.setVisible(True)
+        # Connections is hidden while connected and comes back on disconnect,
+        # so the toolbar offers one connection action at a time rather than
+        # Connect and Disconnect side by side. The trade: switching profiles
+        # now means disconnecting first.
+        self._act_connect.setVisible(not connected)
         self._act_disconnect.setVisible(connected)
         
         self._act_connect.setEnabled(not busy)

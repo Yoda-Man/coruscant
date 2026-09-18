@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.1.5  
+**Version:** 1.1.6  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -202,7 +202,7 @@ coruscant/
 
 ## Connecting to a Database
 
-Click **Connections** to open the connection manager. Import a pgAdmin JSON export or create profiles manually. Double-click a profile to connect.
+Click **Connections** to open the connection manager. The toolbar shows **Connections** while disconnected and **Disconnect** while connected — one at a time, never both — so switching profiles means disconnecting first. Import a pgAdmin JSON export or create profiles manually. Double-click a profile to connect.
 
 | SSL Mode | Behaviour |
 |---|---|

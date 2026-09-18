@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.1.5
+**Version:** 1.1.6
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -213,7 +213,7 @@ The Coruscant window opens with a dark theme by default. You can switch to a lig
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  TOOLBAR                                                                │
-│  [Connect] [Disconnect] | [▶ Execute] [⏹ Cancel] [Explain] [Explain+]  │
+│  [Connections] or [Disconnect] | [▶ Execute] [⏹ Cancel] [Explain]      │
 │  [Format SQL] [Clear] | [Open SQL…] [Save SQL…] | [+ Tab]              │
 │  [Auto-commit ✓] [Commit] [Rollback] | Row limit: [1000] | [🌙] | [●]  │
 ├───────────────┬─────────────────────────────────────────────────────────┤
@@ -305,6 +305,14 @@ To delete a connection from your history, select it in the drop-down and click t
 ### 4.6 Disconnecting
 
 Click **Disconnect** in the toolbar. Any open manual transaction will be abandoned by the server automatically.
+
+**Connections and Disconnect share a slot.** The toolbar shows exactly one of
+them at a time: **Connections** while you are disconnected, **Disconnect**
+while a session is open. Connections reappears the moment you disconnect.
+
+To switch to a different profile, disconnect first. The status chip at the
+bottom of the window still opens the Connection Manager if you need it while
+connected.
 
 ### 4.7 Auto-reconnect
 

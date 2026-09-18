@@ -5,6 +5,6 @@ Author:  Marwa Trust Mutemasango
 Licence: MIT
 """
 
-__version__ = "1.1.5"
+__version__ = "1.1.6"
 __author__  = "Marwa Trust Mutemasango"
 __app_name__ = "Coruscant"

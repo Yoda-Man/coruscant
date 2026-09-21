@@ -1,5 +1,61 @@
 # Changelog
 
+### 1.1.7
+
+**The results grid was discarding your ORDER BY.**
+
+A query ending `ORDER BY "modifieddate" DESC` came back sorted by something
+else entirely. The SQL was never at fault: the statement splitter passes
+`ORDER BY` and `LIMIT` through untouched, `execute()` runs the statement
+verbatim, and `fetchmany()` preserves row order. PostgreSQL returned the rows
+correctly sorted every time.
+
+The grid then re-sorted them. Building the table called:
+
+```python
+table.setSortingEnabled(True)
+```
+
+`setSortingEnabled(True)` does not merely permit sorting — Qt sorts
+immediately, by the current sort indicator, which on a freshly built table is
+column 0. The population step then re-enabled it a second time after filling
+the rows. So every result set was silently reordered by its first column, and
+an `ORDER BY` on any other column was thrown away. With a wide result the
+first column is often scrolled off-screen, which is why the grid simply looked
+unsorted rather than obviously sorted by the wrong thing.
+
+Sorting is no longer switched on while the grid is built. Rows stay in the
+order the server returned them, and sorting turns on the first time a column
+header is clicked — which is the behaviour the manual has always described.
+
+**Filtering hid the wrong rows once a grid was sorted**
+
+`_apply_filter` read each row's values from `_all_rows[row_idx]` but called
+`setRowHidden(row_idx)` on the table. Those two indices agree only until the
+grid is sorted, after which the filter tested one row and hid another. Clicking
+a header is now the ordinary way to sort, putting this directly in the path, so
+each row carries its source index and filtering is correct in any sort order.
+
+**Documentation corrected**
+
+Section 7.3 claimed a third click on a column header removes the sort. Tested
+with real clicks, Qt toggles ascending and descending indefinitely; there is no
+third state. The section now says so, records that results arrive in the
+query's own order, and notes the consequence — once a grid has been sorted,
+re-running the query is the only way back to the `ORDER BY` order.
+
+**Tests**
+
+18 new tests, driving a real results grid through Qt. Both fixes were verified
+by mutation: restoring the original sorting call fails 6 of them, and restoring
+the index-based filter lookup fails 2. The fixture data is deliberately shaped
+like the report — first column unsorted, rows ordered by a later column — and
+one test asserts that shape, so the data cannot quietly stop being able to
+expose the defect.
+
+    CORUSCANT_QT_TESTS=1 pytest tests/test_ui_behaviour.py
+
+
 ### 1.1.6
 
 Two fixes to the editor tabs and the toolbar, and the suite's first tests that

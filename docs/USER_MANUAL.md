@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.1.6
+**Version:** 1.1.7
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -514,7 +514,15 @@ Type `null` to find rows with NULL values.
 
 ### 7.3 Sorting Columns
 
-Click any column header to sort by that column ascending. Click again to sort descending. Click a third time to remove the sort.
+**Results arrive in the order the server returned them.** If your query has an
+`ORDER BY`, that is the order you see — the grid does not re-sort anything on
+its own.
+
+Click any column header to sort by that column ascending. Click again to sort
+descending; further clicks keep toggling between the two.
+
+Sorting a grid is one-way: there is no click that restores the query's own
+order. Re-run the query (**F5**) to get it back.
 
 ### 7.4 Copying Rows to the Clipboard
 

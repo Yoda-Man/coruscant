@@ -206,17 +206,39 @@ class ResultGrid(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setAlternatingRowColors(True)
-        table.setSortingEnabled(True)
         table.setShowGrid(True)
 
+        # Sorting is deliberately NOT enabled here. setSortingEnabled(True)
+        # immediately sorts by the current indicator, which on a fresh table is
+        # column 0 — so every result set was silently reordered by its first
+        # column and whatever ORDER BY the query asked for was thrown away.
+        # It is switched on when the user first clicks a header instead.
         hdr = table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         hdr.setStretchLastSection(True)
         hdr.setHighlightSections(False)
+        hdr.setSortIndicatorShown(False)
+        hdr.sectionClicked.connect(self._on_header_clicked)
         table.verticalHeader().setDefaultSectionSize(22)
 
         self._populate_table(table)
         return table
+
+    def _on_header_clicked(self, column: int) -> None:
+        """
+        Turn sorting on the first time the user clicks a column header.
+
+        Until that click the grid shows rows in the order the server returned
+        them, which is the entire point of writing an ORDER BY. Qt sorts the
+        instant sorting is enabled, so it cannot simply be left on.
+
+        Every later click is Qt's to handle, hence the early return.
+        """
+        if self._table.isSortingEnabled():
+            return
+        self._table.horizontalHeader().setSortIndicatorShown(True)
+        self._table.setSortingEnabled(True)
+        self._table.sortByColumn(column, Qt.SortOrder.AscendingOrder)
 
     # ── Table population ─────────────────────────────────────────────── #
 
@@ -234,8 +256,15 @@ class ResultGrid(QWidget):
                 else:
                     item = QTableWidgetItem(str(value))
                 item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+                # Remember which source row this came from. Sorting moves items
+                # around, so a table row number stops identifying a row in
+                # _all_rows the moment the user sorts — and the filter needs to
+                # know which row it is really looking at.
+                if col_idx == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, row_idx)
                 table.setItem(row_idx, col_idx, item)
-        table.setSortingEnabled(True)
+
+        # Left disabled on purpose — see _on_header_clicked().
 
         table.resizeColumnsToContents()
         for col in range(table.columnCount() - 1):
@@ -244,21 +273,38 @@ class ResultGrid(QWidget):
 
     # ── Filter ───────────────────────────────────────────────────────── #
 
+    def _source_row(self, table_row: int) -> int:
+        """
+        The index in _all_rows of whatever is currently displayed at
+        *table_row*.
+
+        These are the same number until the user sorts, after which they are
+        not — sorting moves the items, so the source index has to be carried
+        on the item rather than inferred from its position.
+        """
+        item = self._table.item(table_row, 0)
+        source = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        return table_row if source is None else int(source)
+
     def _apply_filter(self, text: str) -> None:
         """Hide rows that don't match *text*.  O(n) — no repopulation."""
         needle  = text.strip().lower()
         visible = 0
 
-        for row_idx, row in enumerate(self._all_rows):
+        for table_row in range(self._table.rowCount()):
             if not needle:
-                self._table.setRowHidden(row_idx, False)
+                self._table.setRowHidden(table_row, False)
                 visible += 1
             else:
+                # Read the values from the source row this table row actually
+                # shows; indexing _all_rows by table position hid the wrong
+                # rows once the grid had been sorted.
+                row = self._all_rows[self._source_row(table_row)]
                 match = (
                     any(needle in str(v).lower() for v in row if v is not None)
                     or (needle == "null" and any(v is None for v in row))
                 )
-                self._table.setRowHidden(row_idx, not match)
+                self._table.setRowHidden(table_row, not match)
                 if match:
                     visible += 1
 

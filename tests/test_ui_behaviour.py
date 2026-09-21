@@ -278,3 +278,160 @@ class TestConnectionsActionVisibility:
         window._db = _FakeDB(connected=False, has_last_params=True)
         window._update_ui_state()
         assert window._act_connect.isVisible() is True
+
+
+# ---------------------------------------------------------------------------
+# The results grid must not reorder what the server returned
+# ---------------------------------------------------------------------------
+
+# Column 0 deliberately unsorted, rows in the order an
+#   ORDER BY "modifieddate" DESC
+# would hand back. If anything sorts by column 0, the dates scramble visibly.
+_COLUMNS = ["tgapplicationid", "entitytype", "modifieddate"]
+_ROWS = [
+    (500, "A", "2026-08-21 12:07:33"),
+    (100, "B", "2026-07-23 10:34:55"),
+    (900, "C", "2026-06-02 09:50:31"),
+    (300, "D", "2026-04-23 11:03:11"),
+    (700, "E", "2026-04-06 07:58:42"),
+]
+
+
+@pytest.fixture
+def grid(qapp):
+    from coruscant.ui.widgets.results import ResultGrid
+    g = ResultGrid(_COLUMNS, _ROWS, label="Query 1")
+    yield g
+    g.deleteLater()
+
+
+def _displayed(grid):
+    t = grid._table
+    return [tuple(t.item(r, c).text() for c in range(t.columnCount()))
+            for r in range(t.rowCount())]
+
+
+def _visible(grid):
+    t = grid._table
+    return [row for r, row in enumerate(_displayed(grid)) if not t.isRowHidden(r)]
+
+
+class TestResultOrderIsTheServersOrder:
+    """
+    A SQL tool that reorders results has thrown away the user's ORDER BY.
+
+    setSortingEnabled(True) sorts immediately, by whatever the current sort
+    indicator is — column 0 on a fresh table. Enabling it while building the
+    grid therefore re-sorted every result set by its first column, and an
+    ORDER BY on any other column was silently discarded.
+    """
+
+    def test_rows_appear_in_the_order_they_were_given(self, grid):
+        assert [r[2] for r in _displayed(grid)] == [r[2] for r in _ROWS]
+
+    def test_the_first_column_is_not_sorted(self, grid):
+        """Guards the guard: fixture data must be able to expose the defect."""
+        ids = [int(r[0]) for r in _displayed(grid)]
+        assert ids != sorted(ids)
+        assert ids != sorted(ids, reverse=True)
+
+    def test_sorting_is_off_until_asked_for(self, grid):
+        assert grid._table.isSortingEnabled() is False
+
+    def test_no_sort_indicator_is_advertised(self, grid):
+        assert grid._table.horizontalHeader().isSortIndicatorShown() is False
+
+    def test_a_single_row_result_is_unharmed(self, qapp):
+        from coruscant.ui.widgets.results import ResultGrid
+        g = ResultGrid(_COLUMNS, [_ROWS[0]], label="Q")
+        assert _displayed(g)[0][2] == _ROWS[0][2]
+
+    def test_an_empty_result_does_not_raise(self, qapp):
+        from coruscant.ui.widgets.results import ResultGrid
+        g = ResultGrid(_COLUMNS, [], label="Q")
+        assert _displayed(g) == []
+
+
+class TestSortingOnDemand:
+    """
+    The manual promises "Click any column header to sort by that column".
+    Deferring it must not take that away.
+    """
+
+    def test_clicking_a_header_sorts_by_it(self, grid):
+        grid._table.horizontalHeader().sectionClicked.emit(0)
+        ids = [int(r[0]) for r in _displayed(grid)]
+        assert ids == sorted(ids)
+
+    def test_clicking_enables_sorting_for_later_clicks(self, grid):
+        grid._table.horizontalHeader().sectionClicked.emit(0)
+        assert grid._table.isSortingEnabled() is True
+
+    def test_clicking_reveals_the_sort_indicator(self, grid):
+        grid._table.horizontalHeader().sectionClicked.emit(0)
+        assert grid._table.horizontalHeader().isSortIndicatorShown() is True
+
+    def test_a_later_column_can_be_sorted_too(self, grid):
+        grid._table.horizontalHeader().sectionClicked.emit(2)
+        dates = [r[2] for r in _displayed(grid)]
+        assert dates == sorted(dates)
+
+    def test_the_handler_does_not_re_sort_once_enabled(self, grid):
+        """
+        After the first click Qt owns header clicks. Re-running our handler
+        would fight it and snap the grid back to ascending.
+        """
+        from PySide6.QtCore import Qt
+
+        hdr = grid._table.horizontalHeader()
+        hdr.sectionClicked.emit(0)
+        grid._table.sortByColumn(0, Qt.SortOrder.DescendingOrder)
+        grid._on_header_clicked(0)
+        ids = [int(r[0]) for r in _displayed(grid)]
+        assert ids == sorted(ids, reverse=True)
+
+
+class TestFilteringFollowsTheDisplayedRows:
+    """
+    The filter hid rows by their position in the source list while calling
+    setRowHidden() with that same number on the table. Those agree only until
+    the grid is sorted, after which it hid the wrong rows.
+    """
+
+    def test_filter_matches_the_right_row_unsorted(self, grid):
+        grid._apply_filter("2026-06-02")
+        assert _visible(grid) == [("900", "C", "2026-06-02 09:50:31")]
+
+    def test_filter_matches_the_right_row_after_sorting(self, grid):
+        grid._table.horizontalHeader().sectionClicked.emit(0)
+        grid._apply_filter("2026-06-02")
+        assert _visible(grid) == [("900", "C", "2026-06-02 09:50:31")]
+
+    def test_filter_on_the_first_column_after_sorting(self, grid):
+        grid._table.horizontalHeader().sectionClicked.emit(2)
+        grid._apply_filter("700")
+        assert _visible(grid) == [("700", "E", "2026-04-06 07:58:42")]
+
+    def test_clearing_the_filter_shows_everything_again(self, grid):
+        grid._table.horizontalHeader().sectionClicked.emit(0)
+        grid._apply_filter("2026-06-02")
+        grid._apply_filter("")
+        assert len(_visible(grid)) == len(_ROWS)
+
+    def test_a_filter_matching_nothing_hides_everything(self, grid):
+        grid._apply_filter("no such value anywhere")
+        assert _visible(grid) == []
+
+    def test_nulls_are_still_findable_after_sorting(self, qapp):
+        from coruscant.ui.widgets.results import ResultGrid
+        g = ResultGrid(_COLUMNS, [(1, "x", None), (2, "y", "2026-01-01")], label="Q")
+        g._table.horizontalHeader().sectionClicked.emit(0)
+        g._apply_filter("null")
+        assert [r[0] for r in _visible(g)] == ["1"]
+
+    def test_source_row_maps_back_correctly_after_sorting(self, grid):
+        grid._table.horizontalHeader().sectionClicked.emit(0)
+        ids_in_display_order = [int(r[0]) for r in _displayed(grid)]
+        mapped = [_ROWS[grid._source_row(r)][0]
+                  for r in range(grid._table.rowCount())]
+        assert mapped == ids_in_display_order

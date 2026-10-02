@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="coruscant-source-sha256" content="93290938059da6b9e5bfb55c3eef410f64ec427e719cb69521f0c0515dc19217">
-<title>Coruscant v1.1.8 &mdash; User Manual</title>
+<meta name="coruscant-source-sha256" content="8128143747230a532d13ee0e932564e20e130a08d176f3da10bb5ad9a4eab6c5">
+<title>Coruscant v1.1.9 &mdash; User Manual</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -173,7 +173,7 @@
   <div id="brand">
     <div class="name">Coruscant</div>
     <div class="sub">PostgreSQL Multi-Query Tool</div>
-    <span class="ver">v1.1.8 &middot; User Manual</span>
+    <span class="ver">v1.1.9 &middot; User Manual</span>
   </div>
   <div id="filter"><input id="q" type="search" placeholder="Filter sections…" autocomplete="off"></div>
   <nav id="nav">
@@ -304,7 +304,7 @@
 
 <main id="content">
 <h1 id="coruscant-user-manual">Coruscant User Manual</h1>
-<p><strong>Version:</strong> 1.1.8
+<p><strong>Version:</strong> 1.1.9
 <strong>Author:</strong> Marwa Trust Mutemasango</p>
 <blockquote class="tip">
 <p><em>Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.</em></p>
@@ -1372,6 +1372,8 @@ LIMIT 100;
 <li>A <code>PK</code> marker next to primary-key columns.</li>
 </ul>
 <p>Foreign-key relationships are drawn as one-to-many connector lines between the parent and child tables (Mermaid <code>||--o{</code> notation). Each unique table-pair produces one edge regardless of how many FK columns link them.</p>
+<p><strong>Names appear exactly as they are in the database.</strong> A table called <code>Order Details</code>, or one whose name contains quotes, <code>#</code>, <code>&lt;</code> or <code>&amp;</code>, is drawn as a single entity labelled with its exact name. Mermaid has no way to quote a column name, so a column it cannot parse — one containing a space, starting with a digit, or using other punctuation — is drawn as a safe token (<code>first name</code> becomes <code>first_name</code>) with its exact name in the extra column beside it. In the Mermaid source, each table is identified as <code>t0</code>, <code>t1</code>, … with its real name as the label, which is what keeps any name from being read as Mermaid syntax.</p>
+<p><strong>If a diagram cannot be drawn, the page says so</strong> — <em>Coruscant could not draw this diagram</em>, followed by Mermaid's own error message — instead of showing an empty panel. The <strong>▶ Mermaid source</strong> panel below it is left intact, so you can see which line was rejected.</p>
 <h3 id="123-navigating-the-erd">12.3 Navigating the ERD</h3>
 <table>
 <thead>

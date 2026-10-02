@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.1.8
+**Version:** 1.1.9
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -963,6 +963,10 @@ Each table becomes an entity box containing:
 - A `PK` marker next to primary-key columns.
 
 Foreign-key relationships are drawn as one-to-many connector lines between the parent and child tables (Mermaid `||--o{` notation). Each unique table-pair produces one edge regardless of how many FK columns link them.
+
+**Names appear exactly as they are in the database.** A table called `Order Details`, or one whose name contains quotes, `#`, `<` or `&`, is drawn as a single entity labelled with its exact name. Mermaid has no way to quote a column name, so a column it cannot parse — one containing a space, starting with a digit, or using other punctuation — is drawn as a safe token (`first name` becomes `first_name`) with its exact name in the extra column beside it. In the Mermaid source, each table is identified as `t0`, `t1`, … with its real name as the label, which is what keeps any name from being read as Mermaid syntax.
+
+**If a diagram cannot be drawn, the page says so** — *Coruscant could not draw this diagram*, followed by Mermaid's own error message — instead of showing an empty panel. The **▶ Mermaid source** panel below it is left intact, so you can see which line was rejected.
 
 ### 12.3 Navigating the ERD
 

@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.1.8  
+**Version:** 1.1.9  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -167,7 +167,8 @@ coruscant/
 │   ├── script_manager.py   # ScriptKnowledgeGraph, SQLScriptParser, ScriptIngester
 │   ├── qa_engine.py         # QAEngine, QAFinding, QAReport — six schema health checks
 │   ├── mind_map_generator.py # generate_mind_map(), _compute_bfs() — D3.js HTML output
-│   ├── erd_generator.py     # render_erd_html() — the Mermaid ERD page
+│   ├── erd_generator.py     # build_erd_source(), render_erd_html() — names escaped for Mermaid and HTML
+│   ├── diagram_files.py     # write_temp_html() — diagram pages to temp, schema name made path-safe
 │   └── vendor.py            # inline_script() — bundled JS inlined so diagrams need no network
 │
 ├── vendor/                  # Pinned D3, Mermaid, svg-pan-zoom + licences; see VENDOR.json
@@ -344,6 +345,8 @@ Right-click any schema in the Schema Browser and choose **🔍 QA Engine** to ru
 **Generate ERD** — right-click any schema in the Schema Browser and choose **📐 Generate ERD**. Coruscant queries the database for column definitions, primary-key flags, and foreign-key relationships, then renders a [Mermaid](https://mermaid.js.org/) `erDiagram` and opens it as a self-contained HTML page in your default browser.
 
 Each table appears as an entity box listing every column name, its PostgreSQL data type, and a `PK` marker on primary-key columns. FK relationships are drawn as one-to-many edges (`||--o{`) between the parent and child tables.
+
+Any table name draws correctly — `Order Details` is one table, not two — and a column name Mermaid cannot parse is shown as a safe token with its exact name alongside. If Mermaid cannot draw a diagram at all, the page shows its error instead of an empty panel.
 
 The page includes pan, zoom, and fit controls powered by svg-pan-zoom, and a collapsible **▶ Mermaid source** panel so you can copy the raw diagram definition into any Mermaid-compatible editor (e.g. mermaid.live). Use **File → Save Page As** in the browser to keep the diagram as a schema snapshot or share it with colleagues.
 
@@ -562,6 +565,8 @@ All SQL and rate math live in the GUI-free `coruscant/core/metrics.py`; the UI i
 - Use `verify-full` SSL for production connections over untrusted networks.
 - The Script Manager never executes uploaded scripts during indexing; analysis is text-only.
 - No telemetry, no analytics, no external network calls from any part of the application — the diagrams included. The Mind Map and ERD are self-contained pages with their JavaScript libraries embedded, so they load nothing from the internet. This is enforced rather than asserted: `tests/test_offline.py` fails the build if any source loads a resource from the network, and checks every bundled library against the hash recorded for it.
+
+- **Names from the database are treated as data.** Any role that can create a table chooses its name, so schema, table and column names are escaped for every context they pass through on the way to a diagram — HTML, the Mermaid diagram language, and the temp file name. A name can therefore never be read as markup, script, Mermaid syntax or a file path, and it still appears exactly as written. `tests/test_diagram_safety.py` checks every context against hostile names.
 
 ### Bundled third-party components
 

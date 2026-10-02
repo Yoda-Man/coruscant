@@ -54,7 +54,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QSettings
 from PySide6.QtGui import QColor
 
-from coruscant.core.erd_generator import render_erd_html
+from coruscant.core.diagram_files import write_temp_html
+from coruscant.core.erd_generator import build_erd_source, render_erd_html
 from coruscant.core.database import DatabaseManager
 from coruscant.ui.style import header_button_style, SPACE_XS, HEIGHT_HEADER_BTN
 
@@ -622,15 +623,10 @@ class SchemaBrowser(QWidget):
         self._mm_worker.start()
 
     def _on_mind_map_finished(self, schema: str, focus_table: str, html: str) -> None:
-        import tempfile
         import webbrowser
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".html", delete=False, encoding="utf-8",
-            prefix=f"coruscant_mm_{schema}_",
-        ) as fh:
-            fh.write(html)
-            tmp_path = fh.name
-        webbrowser.open(tmp_path)
+        # The schema name goes into the file name only after write_temp_html
+        # has made it safe — PostgreSQL allows path separators in a name.
+        webbrowser.open(str(write_temp_html(html, "mm", schema)))
         label = f"'{focus_table}'" if focus_table else "all tables"
         self._status.setText(f"Mind map opened for {label}")
 
@@ -724,7 +720,6 @@ class SchemaBrowser(QWidget):
 
     def _generate_erd(self, schema: str) -> None:
         """Generate a Mermaid ER diagram for all tables in *schema* and open in browser."""
-        import tempfile
         import webbrowser
 
         if not self._db.is_connected:
@@ -777,55 +772,17 @@ class SchemaBrowser(QWidget):
             self._status.setText(f"ERD error: {exc}")
             return
 
-        # Build table -> [(col_name, data_type, is_pk)]
-        tables: dict[str, list[tuple[str, str, str]]] = {}
-        for table_name, col_name, data_type, is_pk in col_rows:
-            tables.setdefault(table_name, []).append((col_name, data_type, is_pk))
+        # Mermaid source and page are built in core, Qt-free. Table and column
+        # names are escaped there for Mermaid and for HTML — see erd_generator.
+        mermaid, n_tables, n_rels = build_erd_source(col_rows, fk_rows)
 
-        if not tables:
+        if not n_tables:
             self._status.setText(f"No tables found in schema '{schema}'")
             return
 
-        def _safe(t: str) -> str:
-            """Strip / replace characters Mermaid doesn't allow in type names."""
-            return (t.replace(" ", "_").replace("-", "_")
-                     .replace("(", "").replace(")", "")
-                     .replace(",", "").replace('"', "")
-                     .replace("[", "").replace("]", "")
-                     .replace(":", "_").replace("/", "_"))
-
-        lines_mmd = ["erDiagram"]
-        for tname in sorted(tables):
-            lines_mmd.append(f"    {tname} {{")
-            for col_name, data_type, is_pk in tables[tname]:
-                pk_marker = " PK" if is_pk else ""
-                lines_mmd.append(f"        {_safe(data_type)} {col_name}{pk_marker}")
-            lines_mmd.append("    }")
-
-        seen: set[tuple[str, str]] = set()
-        for child_table, parent_table in fk_rows:
-            pair = (parent_table, child_table)
-            if pair not in seen and parent_table in tables and child_table in tables:
-                seen.add(pair)
-                lines_mmd.append(f'    {parent_table} ||--o{{ {child_table} : "fk"')
-
-        mermaid = "\n".join(lines_mmd)
-
-        n_tables = len(tables)
-        n_rels   = len(seen)
-
-        # Page assembly lives in core, Qt-free and with Mermaid and
-        # svg-pan-zoom inlined, so the ERD needs no network.
         html = render_erd_html(schema, mermaid, n_tables, n_rels)
-
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".html", delete=False, encoding="utf-8",
-            prefix=f"coruscant_erd_{schema}_",
-        ) as fh:
-            fh.write(html)
-            tmp_path = fh.name
-
-        webbrowser.open(tmp_path)
+        tmp_path = write_temp_html(html, "erd", schema)
+        webbrowser.open(str(tmp_path))
         log.info("ERD generated  schema=%s  tables=%d  rels=%d  file=%s",
                  schema, n_tables, n_rels, tmp_path)
         self._status.setText(

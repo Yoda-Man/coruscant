@@ -24,10 +24,27 @@ from __future__ import annotations
 
 import json
 import logging
+from html import escape as escape_html
 
 from coruscant.core.vendor import inline_script
 
 log = logging.getLogger(__name__)
+
+def _script_json(value) -> str:
+    """
+    JSON that is safe to place inside a <script> element.
+
+    json.dumps() leaves "<" and ">" alone, so a table named
+    "</script><script>..." ended the page's own script and ran whatever
+    followed. Escaping them, and "&", as \\u003c / \\u003e / \\u0026 keeps
+    the value identical to JavaScript while giving the HTML parser nothing to
+    act on. ensure_ascii (the default) already escapes U+2028 and U+2029.
+    """
+    text = json.dumps(value, separators=(",", ":"))
+    return (text.replace("<", "\\u003c")
+                .replace(">", "\\u003e")
+                .replace("&", "\\u0026"))
+
 
 # Where the bundled D3 goes in _HTML_TEMPLATE. The template is a str.format()
 # string, and D3's source is full of braces that format() would read as
@@ -106,7 +123,7 @@ def generate_mind_map(conn, schema: str, focus_table: str | None = None) -> str:
         _, bfs_waves = _compute_bfs(focus_table, edges, tables)
 
     # Serialise to JSON for the JS payload
-    nodes_json = json.dumps(
+    nodes_json = _script_json(
         [
             {
                 "id":      t,
@@ -116,11 +133,9 @@ def generate_mind_map(conn, schema: str, focus_table: str | None = None) -> str:
             }
             for t in tables
         ],
-        separators=(",", ":"),
     )
-    links_json = json.dumps(
+    links_json = _script_json(
         [{"source": c, "target": p} for c, p in edges],
-        separators=(",", ":"),
     )
 
     title      = (
@@ -130,11 +145,13 @@ def generate_mind_map(conn, schema: str, focus_table: str | None = None) -> str:
     )
     n_tables   = len(tables)
     n_edges    = len(edges)
-    focus_json = json.dumps(focus_table or "")
+    focus_json = _script_json(focus_table or "")
     has_focus  = "true" if focus_table else "false"
 
     fields = dict(
-        title=title,
+        # Escaped: it carries the schema and table names, and lands in <title>
+        # and <h2>, where a name like "<b>" was parsed as markup.
+        title=escape_html(title),
         schema=schema,
         focus_table=focus_table or "(all tables)",
         n_tables=n_tables,
@@ -372,10 +389,15 @@ sim.on('tick', () => {{
 const tip = document.getElementById('tip');
 node.on('mouseover', function(event, d) {{
   tip.style.opacity = 1;
-  tip.innerHTML =
-    `<strong>${{d.id}}</strong><br/>` +
-    `Rows (est.): ${{d.rows.toLocaleString()}}<br/>` +
-    `FK connections: ${{d.degree}}`;
+  // Built from DOM nodes, never innerHTML: d.id is a table name, and a
+  // table can be named <img src=x onerror=...>.
+  const name = document.createElement('strong');
+  name.textContent = d.id;
+  tip.replaceChildren(
+    name, document.createElement('br'),
+    `Rows (est.): ${{d.rows.toLocaleString()}}`, document.createElement('br'),
+    `FK connections: ${{d.degree}}`,
+  );
   tip.style.left = (event.pageX + 14) + 'px';
   tip.style.top  = (event.pageY - 32) + 'px';
 }}).on('mousemove', function(event) {{

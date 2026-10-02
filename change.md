@@ -1,5 +1,85 @@
 # Changelog
 
+### 1.1.9
+
+**Names from the database are now data — never markup, script, syntax or a
+path.**
+
+Table, column and schema names come from the database, and any role that can
+create a table chooses its name. Both diagrams treated those names as trusted.
+Every defect below was reproduced in a real browser against 1.1.8, with
+harmless payloads that only set a flag, before it was fixed.
+
+| Where | What happened in 1.1.8 |
+|---|---|
+| Mind Map | A table named `</script><script>…</script>` ended the page's own script and **ran the injected one**. `json.dumps()` leaves `<` alone. It also left the map blank: zero nodes drawn. |
+| Mind Map | Hovering a node named `<img src=x onerror=…>` **ran it** — the tooltip was built with `innerHTML`. |
+| ERD | A name containing `</div><img onerror=…>` **ran before Mermaid did**; the source went into a `<div>` and a `<pre>` unescaped. |
+| Both | The schema name was parsed as markup in the page title and heading. |
+| ERD | `Order Details`, a legal PostgreSQL name, was **silently drawn as two tables**, `Order` and `Details`. Nothing failed — the diagram was simply wrong. |
+| ERD | A Mermaid failure was swallowed by `catch(e) {}`, leaving an empty panel indistinguishable from an empty schema. |
+| Both | The schema name went raw into the temp file name, so a schema called `..\..\x` put the file outside the temp directory. |
+
+A name passes through several languages on its way to the screen, and each
+needs its own escaping:
+
+- **HTML.** Titles and headings are escaped. JSON placed inside a `<script>`
+  has `<`, `>` and `&` written as `\u003c` / `\u003e` / `\u0026` — the same
+  value to JavaScript, nothing for the HTML parser to act on. The Mind Map
+  tooltip is built from DOM nodes with `textContent`. The ERD's Mermaid source
+  is escaped where it sits in the page; Mermaid decodes entities in the element
+  it reads, so this is lossless, and a test proves it.
+- **Mermaid.** Every table now has a generated id (`t0`, `t1`, …) with its real
+  name as a quoted label, so no name can be read as Mermaid syntax. Inside
+  labels, `#`, `"`, `<`, `>` and `&` use Mermaid's own codes (`#35;`, `#quot;`
+  …) so they display literally. `#` matters because Mermaid turns any
+  `#name;` into an entity — `a#b;c` would otherwise show as `a&b;c`. Mermaid's
+  attribute grammar cannot quote a column name, so one it cannot parse is drawn
+  as a safe token, with the exact name in the comment column. The rules are
+  based on asking the vendored Mermaid 11.17.2 what it accepts, not on its
+  documentation.
+- **File names.** The schema name is reduced to letters, digits, `_` and `-`
+  before it reaches the temp file name. Both diagrams now share one writer, in
+  `core/diagram_files.py`, instead of two copies of the same unsanitised code.
+
+**A diagram that cannot be drawn now says so.** The ERD shows *Coruscant could
+not draw this diagram* with Mermaid's own error message, logs it with
+`console.error`, and leaves the source panel intact. Mermaid's error graphic is
+suppressed so it can't stand in for an explanation. A render that throws
+nothing but produces no SVG is reported too.
+
+The Mermaid source building moved out of the Qt panel into
+`core/erd_generator.py`, beside the page assembly, so all of this is testable
+without Qt or a database.
+
+**Two bugs caught before they shipped.** A static check found that
+`html.escape()` inside `generate_mind_map` referred to the function's own
+`html` variable, which would have crashed every Mind Map; it is now
+`escape_html`. Removing the ERD's old temp-file code left a reference to
+`tmp_path`, which would have raised straight after the diagram opened. Neither
+reached a commit.
+
+**Tests**
+
+163 new tests in `tests/test_diagram_safety.py`, built from the same hostile
+names — script break-outs, `onerror` payloads, `</div>`, quotes, `#`, `&`,
+line breaks, U+2028 and path traversals. Each fix was verified by mutation:
+**all 13 regressions** fail the suite. Those are plain `json.dumps`, unescaped
+titles, `innerHTML` tooltips, unescaped Mermaid source, raw table names in
+Mermaid, unencoded labels, unencoded `#`, raw column names, a swallowed render
+failure, Mermaid's error graphic, an unsanitised file name, and a raw
+`NamedTemporaryFile` in the panel.
+
+Re-run against the fixed code in a real browser, every attack was inert.
+`Order Details` drew as one table, the `<img onerror>` table drew as its literal
+name, and a rejected diagram showed its error. A clean tab loading only the
+fixed pages, with every node hovered, logged nothing to the console and made
+no request beyond the pages themselves.
+
+    python -m pytest                                    # 995 passed, 93 skipped
+    CORUSCANT_QT_TESTS=1 pytest tests/test_ui_behaviour.py
+
+
 ### 1.1.8
 
 **The offline promise is now true — and enforced.**

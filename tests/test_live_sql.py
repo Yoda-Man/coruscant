@@ -583,3 +583,26 @@ class TestSavepointContainment:
         finally:
             live_db.rollback()
             live_db.set_autocommit(True)
+
+
+class TestDiagramsAgainstARealServer:
+    """
+    The Mind Map's own catalog queries, run for real, must still produce a page
+    that loads nothing from the network. tests/test_offline.py proves the same
+    for canned rows; this proves it for what PostgreSQL actually returns.
+    """
+
+    def test_mind_map_from_a_real_schema_needs_no_network(self, seeded):
+        from coruscant.core.mind_map_generator import generate_mind_map
+        from tests.test_offline import _external_loads
+
+        html = generate_mind_map(seeded, "smoke")
+        assert _external_loads(html) == []
+        assert "d3 7.9.0" in html
+
+    def test_mind_map_draws_the_real_tables(self, seeded):
+        from coruscant.core.mind_map_generator import generate_mind_map
+
+        html = generate_mind_map(seeded, "smoke", "child")
+        assert '"parent"' in html and '"child"' in html
+        assert "Mind Map — child in smoke" in html

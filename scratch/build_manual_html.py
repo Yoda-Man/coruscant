@@ -16,6 +16,7 @@ docs/img/, captured by scratch/shoot_docs.py.
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import re
 import sys
@@ -95,12 +96,29 @@ WARN_WORDS = ("⚠", "warning", "important", "caution",
               "irreversible", "cannot be undone")
 
 
+def source_digest(md_text: str) -> str:
+    """
+    sha256 of the Markdown this HTML was built from, stamped into the page.
+
+    tests/test_docs.py recomputes it from docs/USER_MANUAL.md and fails when the
+    two disagree — which is how the HTML spent three releases stuck at 1.1.4
+    while the Markdown moved on. Line endings are normalised so a Windows
+    checkout (CRLF under core.autocrlf) and a Linux one agree. The test repeats
+    this formula rather than importing it, because importing this module needs
+    the `markdown` package, which CI does not install.
+    """
+    return hashlib.sha256(md_text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+
+
 def data_uri(path: Path) -> str:
     return "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
 
 
 def build() -> None:
     md_text = SRC.read_text(encoding="utf-8")
+    # Hashed now, before md_text is rewritten below (the table of contents is
+    # stripped): the stamp must describe the file on disk, not the transform.
+    source_sha256 = source_digest(md_text)
 
     # The Markdown carries its own hand-written contents list; the HTML gets a
     # generated sidebar instead, so drop it to avoid showing two.
@@ -150,6 +168,7 @@ def build() -> None:
 
     page = TEMPLATE.format(
         version=html.escape(__version__),
+        source_sha256=source_sha256,
         nav=nav_html,
         body=body,
     )
@@ -167,6 +186,7 @@ TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="coruscant-source-sha256" content="{source_sha256}">
 <title>Coruscant v{version} &mdash; User Manual</title>
 <style>
   *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}

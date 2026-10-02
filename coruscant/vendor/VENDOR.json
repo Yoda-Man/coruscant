@@ -1,0 +1,50 @@
+[
+  {
+    "name": "d3",
+    "version": "7.9.0",
+    "licence": "ISC",
+    "file": "d3.min.js",
+    "file_source": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+    "file_sha256": "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
+    "licence_file": "licences/d3.LICENSE",
+    "licence_file_source": "https://cdn.jsdelivr.net/npm/d3@7.9.0/LICENSE",
+    "licence_file_sha256": "3e6849627f74ff73c257a3ae1efb574015d94fc1035c05ec3c15805165efcbc4"
+  },
+  {
+    "name": "svg-pan-zoom",
+    "version": "3.6.1",
+    "licence": "BSD-2-Clause",
+    "file": "svg-pan-zoom.min.js",
+    "file_source": "https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js",
+    "file_sha256": "f463710320089c61d0f57cec2b886c02de04e21eb92ebd22eaa327fdf0a6b7c6",
+    "licence_file": "licences/svg-pan-zoom.LICENSE",
+    "licence_file_source": "https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/LICENSE",
+    "licence_file_sha256": "a4fbaf0b818914459316cb22e1a9d01e0f8786fc10cfe355077cca048daa028a"
+  },
+  {
+    "name": "mermaid",
+    "version": "11.17.2",
+    "licence": "MIT",
+    "file": "mermaid.min.js",
+    "file_source": "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js",
+    "file_sha256": "581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8",
+    "licence_file": "licences/mermaid.LICENSE",
+    "licence_file_source": "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/LICENSE",
+    "licence_file_sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
+    "bundled_notices": [
+      {
+        "name": "lodash-es",
+        "licence": "MIT"
+      },
+      {
+        "name": "DOMPurify 3.4.12",
+        "licence": "Apache-2.0 OR MPL-2.0"
+      },
+      {
+        "name": "cytoscape",
+        "licence": "MIT"
+      }
+    ],
+    "bundled_notices_note": "Licence notices esbuild preserved inside mermaid.min.js. They travel with the file; this list records them and is not claimed exhaustive."
+  }
+]

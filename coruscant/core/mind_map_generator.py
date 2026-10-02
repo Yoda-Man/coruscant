@@ -14,7 +14,9 @@ Focused view (focus_table supplied)
     nodes are revealed in BFS waves with a 500 ms stagger animation.
 
 The output is a single self-contained HTML file opened in the system browser.
-No external images or fonts are needed; only D3.js is loaded from jsDelivr CDN.
+It needs no network at all: D3 is inlined from the copy bundled with Coruscant
+(see coruscant.core.vendor), so the map renders offline and keeps working
+after the file is moved or Coruscant has exited.
 
 Author: Marwa Trust Mutemasango
 """
@@ -23,7 +25,17 @@ from __future__ import annotations
 import json
 import logging
 
+from coruscant.core.vendor import inline_script
+
 log = logging.getLogger(__name__)
+
+# Where the bundled D3 goes in _HTML_TEMPLATE. The template is a str.format()
+# string, and D3's source is full of braces that format() would read as
+# fields — so the template is split here and each half formatted on its own,
+# with D3 placed between them untouched. Splitting the template, rather than
+# substituting into the finished HTML, means no schema or table name can
+# collide with the marker.
+_D3_SENTINEL = "<!--coruscant:d3-->\n"
 
 
 # ── Public entry point ────────────────────────────────────────────────── #
@@ -121,7 +133,7 @@ def generate_mind_map(conn, schema: str, focus_table: str | None = None) -> str:
     focus_json = json.dumps(focus_table or "")
     has_focus  = "true" if focus_table else "false"
 
-    html = _HTML_TEMPLATE.format(
+    fields = dict(
         title=title,
         schema=schema,
         focus_table=focus_table or "(all tables)",
@@ -132,6 +144,8 @@ def generate_mind_map(conn, schema: str, focus_table: str | None = None) -> str:
         focus_json=focus_json,
         has_focus=has_focus,
     )
+    head, tail = _HTML_TEMPLATE.split(_D3_SENTINEL)
+    html = head.format(**fields) + inline_script("d3") + "\n" + tail.format(**fields)
 
     log.info(
         "Mind map generated  schema=%s  focus=%s  tables=%d  edges=%d",
@@ -193,7 +207,7 @@ _HTML_TEMPLATE = """\
 <head>
 <meta charset="utf-8">
 <title>{title}</title>
-<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<!--coruscant:d3-->
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{

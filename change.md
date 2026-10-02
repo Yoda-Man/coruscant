@@ -1,5 +1,110 @@
 # Changelog
 
+### 1.1.8
+
+**The offline promise is now true — and enforced.**
+
+The README has long said: *"No telemetry, no analytics, no external network
+calls from any part of the application."* It was not true. The two diagrams
+Coruscant generates loaded their JavaScript from jsDelivr: D3 for the Mind Map,
+Mermaid and svg-pan-zoom for the ERD. The Python process itself made no outbound
+calls, but the pages it wrote did, every time they were opened. The manual's
+Mind Map section said "No internet connection is required"; that was false too.
+And the README invited you to save an ERD "or share it with colleagues" — a
+shared ERD then failed on any machine without internet access.
+
+It was worse than a broken promise. Mermaid's URL carried no version at all —
+`npm/mermaid/dist/mermaid.min.js` — so jsDelivr served whatever was newest, and
+an ERD's behaviour changed whenever Mermaid published, with no Coruscant
+release, test or changelog entry involved. On 10 September 2026 Mermaid 12.0.0
+shipped, making ELK the default layout; its own release notes say "this changes
+how existing diagrams look" and name entity-relationship diagrams. From that
+day every ERD Coruscant opened was laid out by a library version nobody had
+tested it against.
+
+All three libraries are now bundled in `coruscant/vendor/`, pinned, and inlined
+into each page:
+
+| Library | Version | Licence | Used by |
+|---|---|---|---|
+| D3 | 7.9.0 | ISC | Mind Map |
+| Mermaid | 11.17.2 | MIT | ERD |
+| svg-pan-zoom | 3.6.1 | BSD-2-Clause | ERD |
+
+Each file was fetched from jsDelivr at its pinned version and kept only after
+matching jsDelivr's published hash. `VENDOR.json` records the source, sha256 and
+licence of every file, and the licence texts ship alongside them.
+
+**Inlined, not referenced.** Both diagrams are written to the temp directory
+and opened via `file://`, and a frozen build unpacks its data into a temporary
+`_MEI` directory that is deleted when Coruscant exits — so a page pointing at
+the bundled files would break. An inlined page is self-contained: it renders
+offline, after Coruscant has closed, and on a colleague's machine. The cost is
+size: an ERD page is now about 3.5 MB.
+
+**Why Mermaid 11.17.2 rather than 12.0.0.** Every published Mermaid security
+advisory, the August 2026 batch included, is fixed by 11.16.1, and the 11.x
+line is still receiving security patches. 12.0.0 changes the ERD layout,
+requires ES2024 and Safari 17.4+, and its bundle is 5.4 MB against 3.5 MB.
+Pinning 11.17.2 restores the dagre layout ERDs had before 10 September. Moving
+to 12 is left as its own deliberate change.
+
+**No CDN fallback.** A missing bundle raises `VendorAssetMissing` instead of
+quietly loading from the network, which would break the promise where nobody
+could see it.
+
+**Safe to inline.** An inline `<script>` ends at the first `</script`, and
+`<!--` followed by `<script` makes the parser swallow the real closing tag. None
+of the bundles contains `<script` or `</script`, which rules out both; the loader
+refuses one that does, and a test asserts it.
+
+**Also in this change**
+
+- The ERD's page assembly moved out of the Schema Browser into a Qt-free
+  `core/erd_generator.py`, mirroring the Mind Map generator, so the page can be
+  built and checked without Qt or a database. Verified byte-identical to the old
+  output apart from the two script tags.
+- `.gitattributes` marks the bundles binary. With `core.autocrlf`, a Windows
+  checkout would otherwise rewrite their line endings, change their bytes and
+  break every hash.
+- The PyInstaller spec ships `coruscant/vendor`. Without it the executable would
+  raise on the first diagram. Checked by reading the built exe's archive: all
+  seven files present, each bundle byte-identical to the manifest.
+
+**The HTML manual had been stuck at 1.1.4**
+
+`docs/USER_MANUAL.html` is generated from the Markdown, which is declared the
+single source of truth. Releases 1.1.5, 1.1.6 and 1.1.7 updated the Markdown
+and never rebuilt the HTML, so it was missing object definitions, closable
+tabs, the corrected sorting section and the Python 3.14 requirement. It is
+rebuilt, and `scratch/build_manual_html.py` now stamps the page with the sha256
+of the Markdown it read. A new test recomputes that hash and fails when they
+disagree, which catches drift within a release as well as across one.
+
+**Tests**
+
+54 new tests. The new `tests/test_offline.py` (51 tests) checks that no source
+under `coruscant/` loads a resource from the network, that the bundles are
+pinned, licensed and byte-identical to the manifest, that the generated pages
+load nothing and carry their libraries, and that the frozen build ships them.
+Two live-SQL tests run the Mind Map's real catalog queries against PostgreSQL,
+and one checks the HTML manual's hash.
+
+Each guard was verified by mutation. All eight regressions fail the suite: a
+CDN tag added back to the Mind Map, Mermaid loaded from the CDN in the ERD, D3
+pushed through `str.format()`, one bit flipped in a bundle, the spec entry
+dropped, the `.gitattributes` rule removed, Mermaid unpinned in the manifest,
+and the loader's script-tag guard deleted. The HTML-sync test fails when the
+Markdown is edited after a build.
+
+Both diagrams were rendered in a real browser. The network log showed only
+the pages themselves, the resource-timing list was empty, the console was
+clean, D3 reported 7.9.0, and the ERD's SVG and pan-zoom both initialised.
+
+    python -m pytest                                    # 832 passed, 93 skipped
+    CORUSCANT_QT_TESTS=1 pytest tests/test_ui_behaviour.py
+
+
 ### 1.1.7
 
 **The results grid was discarding your ORDER BY.**

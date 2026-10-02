@@ -1,6 +1,6 @@
 # Coruscant User Manual
 
-**Version:** 1.1.7
+**Version:** 1.1.8
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -910,7 +910,7 @@ When enabled, Coruscant runs the QA Engine on the first schema immediately after
 
 ## 11. Mind Map
 
-The **Mind Map** feature generates an interactive graph of your schema's tables and FK relationships and opens it in your default web browser as a self-contained HTML file. No internet connection is required.
+The **Mind Map** feature generates an interactive graph of your schema's tables and FK relationships and opens it in your default web browser as a self-contained HTML file. No internet connection is required: D3 7.9.0, the library that draws the graph, is bundled with Coruscant and embedded in the file.
 
 ### 11.1 Schema Mind Map
 
@@ -981,7 +981,7 @@ A collapsible **▶ Mermaid source** panel at the bottom of the page shows the r
 
 The ERD is written to a temporary `.html` file (named `coruscant_erd_<schema>_<random>.html`) and opened in your browser. Use **File → Save Page As** in the browser to keep a permanent copy — useful as a schema snapshot or for sharing with colleagues who don't have Coruscant installed.
 
-> **Note:** The diagram uses Mermaid.js and svg-pan-zoom loaded from a CDN (`cdn.jsdelivr.net`). An internet connection is required the first time the file is opened.
+> **Note:** The diagram works fully offline. Mermaid 11.17.2 and svg-pan-zoom 3.6.1 are bundled with Coruscant and embedded in the file, so it renders without an internet connection — including after Coruscant has closed, or when the file is shared with someone else. This makes each ERD file about 3.5 MB.
 
 ---
 

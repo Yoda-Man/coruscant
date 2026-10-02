@@ -1,0 +1,5 @@
+# Vendored third-party bundles are verified byte-for-byte against the sha256
+# values in coruscant/vendor/VENDOR.json. With core.autocrlf, Git would rewrite
+# their line endings on a Windows checkout, change the bytes, and break the
+# hashes — so they are stored and checked out exactly as fetched.
+coruscant/vendor/** binary

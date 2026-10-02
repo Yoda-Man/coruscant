@@ -188,6 +188,33 @@ def test_manual_and_readme_report_the_current_version():
         )
 
 
+def test_html_manual_was_built_from_the_current_markdown():
+    """
+    docs/USER_MANUAL.html is generated from docs/USER_MANUAL.md, the declared
+    single source of truth, by scratch/build_manual_html.py — which stamps the
+    page with the sha256 of the Markdown it read.
+
+    Nothing checked that stamp, so the HTML sat at v1.1.4 for three releases
+    while the Markdown moved on, and anyone reading it missed every change since.
+    The hash catches drift within a release too, which a version check would
+    not. The formula is repeated here rather than imported, because importing
+    the builder needs the `markdown` package, which CI does not install.
+    """
+    import hashlib
+
+    md = (_ROOT / "docs" / "USER_MANUAL.md").read_text(encoding="utf-8")
+    expected = hashlib.sha256(md.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+
+    page = (_ROOT / "docs" / "USER_MANUAL.html").read_text(encoding="utf-8")
+    m = re.search(r'<meta name="coruscant-source-sha256" content="([0-9a-f]{64})">', page)
+    assert m, ("USER_MANUAL.html carries no source hash — rebuild it: "
+               "python scratch/build_manual_html.py")
+    assert m.group(1) == expected, (
+        "USER_MANUAL.html was built from a different USER_MANUAL.md — rebuild it: "
+        "python scratch/build_manual_html.py"
+    )
+
+
 def test_test_suite_reads_files_with_explicit_encoding():
     """
     Ten tests failed on Windows because a helper called Path.read_text() with no

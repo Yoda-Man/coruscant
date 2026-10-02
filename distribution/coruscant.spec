@@ -18,6 +18,10 @@ a = Analysis(
     datas=[
         (os.path.join(project_root, 'docs', 'coruscant3.png'), 'docs'),
         (os.path.join(project_root, 'docs', 'icon.png'), 'docs'),
+        # D3, Mermaid and svg-pan-zoom, inlined into every Mind Map and ERD so
+        # they need no network. Without this the diagrams raise
+        # VendorAssetMissing in the frozen build — see coruscant/core/vendor.py.
+        (os.path.join(project_root, 'coruscant', 'vendor'), os.path.join('coruscant', 'vendor')),
     ],
     hiddenimports=[
         'psycopg2',

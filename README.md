@@ -4,7 +4,7 @@
   <img src="docs/coruscant3.png" alt="Coruscant — PostgreSQL Multi-Query Tool" width="600">
 </p>
 
-**Version:** 1.1.7  
+**Version:** 1.1.8  
 **Author:** Marwa Trust Mutemasango
 
 > *Named after the galactic capital of Star Wars — a city-planet that is essentially one giant information hub.*
@@ -166,7 +166,11 @@ coruscant/
 │   ├── metrics.py           # Live Monitor SQL + per-second rate computation
 │   ├── script_manager.py   # ScriptKnowledgeGraph, SQLScriptParser, ScriptIngester
 │   ├── qa_engine.py         # QAEngine, QAFinding, QAReport — six schema health checks
-│   └── mind_map_generator.py # generate_mind_map(), _compute_bfs() — D3.js HTML output
+│   ├── mind_map_generator.py # generate_mind_map(), _compute_bfs() — D3.js HTML output
+│   ├── erd_generator.py     # render_erd_html() — the Mermaid ERD page
+│   └── vendor.py            # inline_script() — bundled JS inlined so diagrams need no network
+│
+├── vendor/                  # Pinned D3, Mermaid, svg-pan-zoom + licences; see VENDOR.json
 │
 ├── ui/
 │   ├── main_window.py       # MainWindow — coordinator, no business logic
@@ -343,11 +347,13 @@ Each table appears as an entity box listing every column name, its PostgreSQL da
 
 The page includes pan, zoom, and fit controls powered by svg-pan-zoom, and a collapsible **▶ Mermaid source** panel so you can copy the raw diagram definition into any Mermaid-compatible editor (e.g. mermaid.live). Use **File → Save Page As** in the browser to keep the diagram as a schema snapshot or share it with colleagues.
 
+Mermaid 11.17.2 and svg-pan-zoom 3.6.1 are embedded in the page itself, so it needs no internet connection — not when it opens, not after Coruscant has closed, and not on a colleague's machine. Each ERD page is therefore about 3.5 MB.
+
 ## Mind Map
 
 **Schema-level mind map** — right-click a schema and choose **🗺 Mind Map**. Coruscant queries row counts and FK edges in a background thread, then opens a self-contained HTML page in your default browser with:
 
-- D3.js v7 force-directed simulation of all tables and FK relationships.
+- D3 7.9.0 force-directed simulation of all tables and FK relationships — D3 is embedded in the page, so it renders with no internet connection.
 - Node size scaled by row count; colour heat (blue → red) by FK degree.
 - Pan and zoom with mouse.
 - Search box: type a table name to highlight matching nodes.
@@ -555,7 +561,21 @@ All SQL and rate math live in the GUI-free `coruscant/core/metrics.py`; the UI i
 - Passwords are base64-encoded in the OS settings store, not encrypted. Treat the store as sensitive.
 - Use `verify-full` SSL for production connections over untrusted networks.
 - The Script Manager never executes uploaded scripts during indexing; analysis is text-only.
-- No telemetry, no analytics, no external network calls from any part of the application.
+- No telemetry, no analytics, no external network calls from any part of the application — the diagrams included. The Mind Map and ERD are self-contained pages with their JavaScript libraries embedded, so they load nothing from the internet. This is enforced rather than asserted: `tests/test_offline.py` fails the build if any source loads a resource from the network, and checks every bundled library against the hash recorded for it.
+
+### Bundled third-party components
+
+Embedded in the diagrams Coruscant generates, pinned to the versions below and stored in `coruscant/vendor/` with their licences. `VENDOR.json` records the source and sha256 of each file.
+
+| Component | Version | Licence | Used by |
+|---|---|---|---|
+| [D3](https://d3js.org/) | 7.9.0 | ISC | Mind Map |
+| [Mermaid](https://mermaid.js.org/) | 11.17.2 | MIT | ERD |
+| [svg-pan-zoom](https://github.com/bumbu/svg-pan-zoom) | 3.6.1 | BSD-2-Clause | ERD |
+
+Mermaid's bundle itself embeds third-party code whose licence notices are preserved inside the file, among them lodash-es (MIT), DOMPurify (Apache-2.0 or MPL-2.0) and cytoscape (MIT).
+
+Updating one is a deliberate change, not something that happens on its own: replace the file, update its entry in `VENDOR.json`, check the diagram renders, and note it in the changelog.
 
 ## Known Limitations
 
